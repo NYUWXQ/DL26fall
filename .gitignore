@@ -1,0 +1,17 @@
+# Environment / 环境
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Data (shipped separately, never commit) / 数据不提交
+train_images/
+test_images/
+.cache/
+*.csv
+!sample_submission.csv
+!test.csv
+
+# Run artifacts / 运行产物
+runs/
+submissions/
