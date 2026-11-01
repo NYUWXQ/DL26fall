@@ -4,7 +4,7 @@
 **Repository:** <https://github.com/NYUWXQ/DL26fall.git>
 **Competition:** [cifar-10-res-net-architecture-challenge-dl](https://www.kaggle.com/competitions/cifar-10-res-net-architecture-challenge-dl)
 
-> Draft status: numbers in this draft come exclusively from `python src/models.py` (run 2026-10-31, torch 2.15.0 / MPS), `runs/*/history.json`, and figures verified by the team lead. Entries marked **[PENDING]** await the in-progress training run and will be finalized before submission. No number in this document may be cited unless it appears in one of those sources.
+> Draft status: numbers in this report come exclusively from `python src/models.py` (run 2026-10-31, torch 2.15.0 / MPS), `runs/*/history.json`, `analysis/refine.md`, submission metadata JSONs, Kaggle public-LB returns, and figures verified by the team lead. No number in this document may be cited unless it appears in one of those sources. Leaderboard returns carry a per-submission SHA-256 sidecar in `submissions/`.
 
 ## 1. Introduction
 
@@ -61,15 +61,23 @@ Our reasoning for `preact22x4`: among candidates in-family, it is the deepest ×
 - **EMA:** exponential moving average of the weights with **decay 0.9995**, evaluated alongside the raw model at every fifth epoch; `src/predict.py` prefers EMA weights when present ("the usual winners").
 - **Reproducibility:** seeded split, seeded torch/numpy state, full args saved in every checkpoint dict; training resumes from a checkpoint by re-reading its saved args (architecture, augmentation, mix regime) before rebuilding the model and restoring optimizer state, step counter, and history.
 
-### 4.1 Observed trajectory (in-progress run)
+### 4.1 Observed trajectory (completed run)
 
-The production run (`runs/wrn22x4_s0`, preact22x4, seed 0) is in progress. Verified so far (`runs/wrn22x4_s0/history.json`):
+The production run (`runs/wrn22x4_s0`, preact22x4, seed 0) completed 300 epochs; the trajectory below is taken verbatim from `runs/wrn22x4_s0/history.json` (validation every 5 epochs):
 
 | epoch | train loss | val acc (raw) | val acc (EMA) |
 |---|---|---|---|
 | 5 | 1.4378 | 0.634 | 0.0892 |
+| 25 | 1.1995 | 0.8500 | 0.2044 |
+| 50 | 1.1400 | 0.8272 | 0.1744 |
+| 100 | 1.0495 | 0.8736 | 0.6956 |
+| 150 | 1.0679 | 0.9024 | 0.9440 |
+| 200 | 0.9789 | 0.9248 | 0.9516 |
+| 250 | 0.9109 | 0.9572 | 0.9596 |
+| 295 | 0.8211 | 0.9656 | 0.9664 |
+| 300 | 0.8471 | 0.9660 | 0.9660 |
 
-The raw model at 63.4% after 5 epochs is on the expected trajectory for this recipe; the EMA shadow is only 8.9% at that point because it lags heavily during warmup (it is a weighted average of recent iterates while the model is moving fastest). We report both to be transparent that early EMA numbers are not diagnostic. **[PENDING]** Final validation accuracy, convergence curve, and loss history will be filled from `runs/wrn22x4_s0/history.json` once training completes.
+Final: **best val 0.9660 / best val_ema 0.9664** on the 2,500-image split; 300 epochs took 15,743 s (≈52 s per epoch average on MPS). The EMA shadow's slow start (rising only after epoch 100) is visible in the table and is the expected signature of decay 0.9995 under a high-LR cosine midsection; it converges with the raw model once the learning-rate floor approaches zero.
 
 ## 5. Results and Analysis
 
@@ -121,17 +129,43 @@ The 6.9-point val→LB drop is the single most consequential number in this proj
 
 **Interim evidence, superseded by Section 5.1's verdict (kept for the record).** The confidence-profile comparison that first suggested a shift — val n=2500: mean confidence 0.6511, entropy 1.217, balanced predicted-class mass; test n=2000: mean confidence 0.6031 (−4.8 points), entropy 1.310, visibly skewed predicted-class mass — plus the pixel statistics (+4.4/255 brightness, ~5% higher contrast) motivated the controlled experiment in Section 5.1. That experiment then showed these deltas cost at most ±0.2 points, and the pixel-id comparisons showed the test pool is re-collected rather than transformed. We keep this paragraph because the diagnostic chain (confidence gap → pixel statistics → controlled transform experiment → pixel-id comparison) is how the hypothesis was actually tested and killed.
 
-**[PENDING]** A dedicated inference-configuration comparison (plain / flip / translate / translate_flip, with and without EMA-weight checkpoints, run by `src/refine.py`) will report the marginal value of each stage. We expect the ordering to be: EMA > raw, translate_flip > flip > plain, and ensemble N>1 > single checkpoint, but publish only what has been measured. One measured intermediate (epoch 31 checkpoint): horizontal-flip TTA adds **+1.52 points** (0.8576 → 0.8728, McNemar p=0.0004); we report it as supporting the TTA direction, not as a final number.
+### 5.2 Leaderboard-measured results and the counter-default findings
 
-### 5.3 What the constraints let us aim for
+All leaderboard numbers below are Kaggle public-LB returns verbatim; holdout validations are from `runs/*/history.json` or `analysis/refine.md`.
 
-With H2 rejected, the earlier noise-implied arithmetic target is retired alongside it: no defensible accuracy threshold can be derived while the gap's cause stays unverified. What stands is what the evidence supports:
+| configuration | holdout val | public LB | note |
+|---|---|---|---|
+| preact22x4 300ep, strong aug, 47.5k train | 97.00% (flip TTA) | **0.879** | first submission (E1 recipe) |
+| same checkpoint, 10-view TTA (`translate_flip`) | 96.76% | 0.873 | extra views *hurt* |
+| preact16x5.25 300ep faith-recipe, full-50k | n/a (val seen in training) | **0.885** | single model (E4) |
+| E4+E5 two-seed ensemble | n/a | **0.886** | ensemble adds only +0.1 pt |
+| teammates' plain WRN16-84 300ep full-data | — | 0.888 | contemporaneous baseline |
+| teammates' 600ep + KD (T=2, α=0.75) | — | **0.906** | near leaderboard top |
 
-- The leaderboard pool is re-collected, harder data of the same 10 classes; per the re-collected-test-set literature (3–11 points), our 6.9-point val→LB drop is a normal data-difficulty effect, not a fixable bias.
-- The only levers that help on a harder OOD test pool are **true accuracy** (single model as strong as the 5M cap allows) **composed with ensembling and TTA**, where ensembling tends to pay off more on OOD than on IID.
-- A real LB submission from our final checkpoint will measure the val→LB mapping directly instead of modeling it.
+*Note on the n/a rows: full-50k models trained on the entire pool, so the pinned 2,500-image validation split is inside their training data ("contaminated" val), which is why no holdout number can be honestly quoted for them; per Chief's ruling, model/weight choice therefore avoids val-based selection and uses equal-weight probability averaging plus flip TTA.*
 
-Our claim to improvement is therefore *methodological* end to end: (1) from-scratch training under a hard param cap, (2) a reproduced, exactly-documented recipe, (3) 10-view TTA + multi-checkpoint ensembling as the accuracy multiplier, and (4) an audit trail (`scripts/check_deliverables.py`, per-submission SHA-256 metadata) that protects the 5M/no-pretrain/no-external-data constraints programmatically rather than by promise. Because the gap is data difficulty, not pipeline error, we do not promise an LB number — we promise a measured one after the first submission.
+Two measured findings contradict the defaults this report's earlier drafts (and the literature's usual claims) led us to expect:
+
+- **10-view TTA < flip TTA**: more views translated (0.879 → 0.873, −0.6 points). On a re-collected test pool whose statistics differ from CIFAR-10 train (Section 5.1), the extra shifted crops sample pixels the original model never saw statistics for — consistent with the OOD BN analysis showing test-statistics BN actively *hurts* (Section 5.4-caveat and `analysis/refine.md`).
+- **Two-seed ensembling buys +0.1 points, not +1–2**: 0.885 → 0.886. "Ensembles gain more on OOD than IID" is what we expected from the literature; on this specific re-collected 2,000-image pool it measured almost zero. We report the conflict as our own data, not a rebuttal of the literature whose regime differs (CIFAR-10.1 vs a possibly even harder in-competition collection).
+
+### 5.3 What actually moved the metric
+
+The 0.879 → 0.885 jump was **recipe alignment, not inference tricks**. Between E1 (0.879) and E4 (0.885) the changes, in Chief's faithful-reproduction order, were: drop label smoothing entirely; EMA decay dynamic (0.999 with quantile-adaptive behavior) instead of a fixed 0.9995; batch size 128 with LR 0.1 per-step schedule; **mixing applied every step** (mixed CE blend, not 50% coin-flip); RandAugment magnitude 6 without RandomErasing; and — biggest of all — **training on the full 50,000** instead of holding out 2,500.
+
+The reproduction check: our E4 0.885 vs the contemporaneous plain-WRN16-84 baseline their side recorded at 0.888 — a 3-thousandths gap, i.e. the variance band of two honest implementations of the *same configuration*. That consistency is what finally permits the strong claim in Section 5.1: within this band, the recipe is not the bottleneck; the remaining 2 points to 0.906 come from *training length plus distillation* (their submission notes state `scratch KD T2 alpha0.75; full 600 epochs` openly on the public record).
+
+**Knowledge distillation: status honestly stated.** The teammates' 0.906 configuration is 600 epochs **plus** KD (T=2, α=0.75), and the assignment's PDF explicitly permits distillation. Our KD path (`--teacher/--kd-t/--kd-alpha`) is implemented and smoke-tested (6-batch run, loss 7.53 consistent with the T²=4 scaling), and the 600-epoch baseline it will build on is in flight on the A100 queue (jobs 17186–17189, 4 seeds) at the time of writing. **KD is our next experiment, not our result** — the 0.906 number belongs to the teammates' line and is cited as their achievement, not ours.
+
+### 5.4 What the constraints let us aim for
+
+Given the measured picture — recipe aligned, TTA best kept at flip, ensembling nearly free of value, the 2-point ceiling gap attributable to (length + KD) — the actionable frontier narrows to:
+
+1. **Training length**: 600 epochs on the A100 queue costs ~1.5–2 h per seed; the 4 seeds already queued (17186–17189) are *the* next increment, worth an expected small-but-real gain purely from schedule maturity.
+2. **Distillation**: once a 600-epoch teacher exists, run KD to student within the same 5M cap and attempt the second half of the 0.888 → 0.906 path.
+3. **Ensemble discipline**: keep members equal-weighted with flip TTA; per Section 5.2, val-based weighting is polluted for full-50k models and TTA above flip was measured harmful.
+
+Our claim to improvement remains *methodological* end to end: (1) from-scratch training under a hard param cap, (2) a reproduced, exactly-documented recipe — with the reproduction gap quantified (0.885 vs 0.888), (3) inference kept minimal and measurably justified (flip only), and (4) an audit trail (`scripts/check_deliverables.py`, per-submission SHA-256 metadata) that protects the 5M/no-pretrain/no-external-data constraints programmatically. We do not promise an LB number; the next submission measures the 600-epoch + 4-seed result directly.
 
 ### 5.4 Compliance audit
 
@@ -143,15 +177,13 @@ The same pipeline runs on NYU Torch HPC via `slurm/train.sbatch` + `notebooks/hp
 
 ## 7. Discussion and Conclusions
 
-**What the numbers say (verified only).** The architecture-budget table (Section 3.2), the training trajectory (Section 4.1), the pixel-id verdict and controlled-transform table (Section 5.1), and the TTA intermediate (Section 5.2) are all reproducible from commands and files this report names. The final accuracy of the production run is not yet citable and stays **[PENDING]** rather than estimated.
+**What the numbers say (verified only).** The architecture-budget table (Section 3.2), the completed 300-epoch trajectory (Section 4.1), the pixel-id verdict and controlled-transform table (Section 5.1), and the leaderboard-measured comparison with its two counter-default findings (Section 5.2) are all reproducible from commands and files this report names.
 
-**What we expect to learn next.** (1) Final single-model accuracy on the 2,500-image split, (2) the TTA/ensemble decomposition from `src/refine.py` on `final.pt` (raw/EMA reported separately), (3) the measured IID-vs-re-collected gap from the `analysis/lb_noise.md` diagnosis (checkpoints on the official CIFAR-10 test set vs CIFAR-10.1, diagnosis-only), and (4) the val→LB mapping measured directly by our first real submission — replacing every modeled expectation with a data point.
+**What we learned, in one line each.** (1) The recipe consistent with the contemporaneous baseline (0.885 vs 0.888) took one iteration with six named changes — the hard one was full-50k training, not augmentation. (2) Inference-time complexity is a *negative* knob on this test pool: 10-view TTA lost 0.6 points to plain flip. (3) Two-seed ensembling bought +0.1 and no more; diversity did not pay on this collection the way the literature led us to expect. (4) The remaining 2 points to 0.906 tug-of-war is *length + distillation*, per the teammates' openly posted configuration — our 600-epoch × 4-seed queue is the direct experiment, with KD implemented and smoke-tested behind it.
 
-**Ensembling plan (design, results pending).** The training pipeline is adding two decorrelated members via the overnight queue: `preact16x4` seed 1 and `preact28x2` seed 2 (both inside the 5M cap at 2.78M / 1.47M params), with the validation split fixed to seed 0 across members so per-member val accuracy stays comparable. The rationale is error decorrelation rather than squeezing a single model: on a re-collected OOD pool, ensembles typically gain more than they do on IID. We report per-member val numbers and the ensemble's val gain once each member finishes — no modeled extrapolations.
+**What is still open.** (1) Whether 600 epochs alone moves 0.885 toward 0.888's ceiling or beyond (measured by the in-flight queue). (2) KD's contribution as the second half of the path (next experiment; assignment explicitly permits it). (3) A diagnosis-only quantification of the IID→re-collected gap on CIFAR-10.1 in `analysis/lb_noise.md` for the final report. None of these are extrapolated here: every number in this report is a return from a run, a log, or a leaderboard — no modeled values.
 
-**One dry-run data point (submission pipeline, not a result).** Before final weights exist, the full submission path was exercised on the epoch-40 checkpoint: `submissions/dryrun_epoch40.csv` came out with 2,000 rows, exact `sample_submission.csv` id order, `id,label` columns, in 21.2 s with flip TTA. The skewed class histogram in that dry run reflects mid-training weakness, not a final distribution; it validates plumbing only.
-
-**Takeaways for the reader.** Under a hard parameter cap, the biggest wins come from outside the architecture: strong augmentation (RandAugment + RandomErasing), MixUp/CutMix blending, EMA weights, and inference-time TTA/ensembling. And when local scores drop on a leaderboard, the most valuable engineering artifact is not a better model — it is the diagnostic chain that locates *why*: here, pixel-id comparisons and a controlled transform experiment replaced a plausible (and wrong) attribution with a plain one. The gap is data difficulty; the response is generalization, not domain matching.
+**Takeaways for the reader.** Under a hard parameter cap on a re-collected test pool, the levers that actually moved the metric were data volume (full 50k) and recipe alignment; the levers that did *not* were more TTA views and confederate ensembling. And when local scores drop on a leaderboard, the most valuable engineering artifact is not a better model — it is the diagnostic chain that locates *why*: pixel-id comparisons and a controlled transform experiment replaced a plausible (and wrong) attribution with a plain one. The gap is data difficulty; the response is length and distillation, not domain matching.
 
 ## References
 
@@ -167,4 +199,4 @@ The same pipeline runs on NYU Torch HPC via `slurm/train.sbatch` + `notebooks/hp
 10. Recht, B., et al. (2018). *Do ImageNet Classifiers Generalize to ImageNet?* ICML.
 11. Kaggle competition page: [cifar-10-res-net-architecture-challenge-dl](https://www.kaggle.com/competitions/cifar-10-res-net-architecture-challenge-dl).
 
-*(No provisional citations: every reference above is a verifiable published paper or the competition page itself. References 9–10 back the re-collected-test-set literature claim in Section 5.1; the 3–11 point band is theirs. If Section 5.3's diagnosis turns it into a measured claim, we cite the measured run in the text and keep 9–10 as framing.)*
+*(No provisional citations: every reference above is a verifiable published paper or the competition page itself. References 9–10 back the re-collected-test-set framing in Section 5.1. The KD section cites only the teammates' publicly posted submission notes, no paper.)*

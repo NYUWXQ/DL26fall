@@ -112,6 +112,9 @@ def main() -> None:
     ap.add_argument("--mix-always", action="store_true", help="mix every step (teammate recipe) / 每步都混合")
     ap.add_argument("--ema-dynamic", action="store_true", help="decay=min(0.999,(1+step)/(10+step)) / 动态 EMA")
     ap.add_argument("--eval-ood", default="", help="optional .npy dir with cifar-10.1 data/labels for OOD monitoring / OOD 监控")
+    ap.add_argument("--teacher", default="", help="checkpoint to distill from / 蒸馏用的 teacher checkpoint")
+    ap.add_argument("--kd-t", type=float, default=2.0, help="distillation temperature / 蒸馏温度")
+    ap.add_argument("--kd-alpha", type=float, default=0.75, help="weight of the soft KD loss / 软标签损失权重")
     ap.add_argument("--drop", type=float, default=0.0)
     ap.add_argument("--ema-decay", type=float, default=0.999)
     ap.add_argument("--out", default="runs/run")
@@ -169,6 +172,19 @@ def main() -> None:
     n = check_budget(model)  # hard 5M cap / 硬性 5M 限制
     print(f"[model] {args.model} params={n:,} device={device} train={len(tr_y)} val={len(va_y)}", flush=True)
 
+    # Optional teacher for knowledge distillation (PDF explicitly allows teacher-student
+    # distillation). The teacher is frozen and evaluated in eval mode.
+    # 可选 teacher 做知识蒸馏（作业明确允许 teacher-student distillation），冻结参数并固定 eval。
+    teacher = None
+    if args.teacher:
+        t_ck = torch.load(args.teacher, map_location=device, weights_only=False)
+        teacher = build_model(t_ck.get("args", {}).get("model", args.model)).to(device)
+        teacher.load_state_dict(t_ck.get("ema", t_ck["model"]))
+        teacher.eval()
+        for prm in teacher.parameters():
+            prm.requires_grad_(False)
+        print(f"[kd] teacher={args.teacher} T={args.kd_t} alpha={args.kd_alpha}", flush=True)
+
     opt = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9,
                           weight_decay=args.weight_decay, nesterov=True)
     crit = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
@@ -222,6 +238,15 @@ def main() -> None:
 
             out = model(xb)
             loss = lam * crit(out, ya) + (1 - lam) * crit(out, yb) if lam < 1.0 else crit(out, ya)
+            if teacher is not None:
+                # Soft-target distillation: match the teacher's temperature-smoothed
+                # distribution on the same (possibly mixed) batch.
+                # 软标签蒸馏：在同一批（可能已混合）输入上匹配 teacher 的温度平滑分布。
+                with torch.no_grad():
+                    t_soft = (teacher(xb) / args.kd_t).float().softmax(1)
+                s_log = (out / args.kd_t).float().log_softmax(1)
+                kd = -(t_soft * s_log).sum(1).mean() * (args.kd_t ** 2)
+                loss = (1 - args.kd_alpha) * loss + args.kd_alpha * kd
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
