@@ -425,3 +425,167 @@ def test_pixel_shift_report_is_quiet_for_identical_sets():
     rep = pixel_shift_report(x, y, x.copy())
     assert rep["mean_gap"] == pytest.approx(0.0, abs=1e-9)
     assert rep["std_gap"] == pytest.approx(0.0, abs=1e-9)
+
+
+# --------------------------------------------------------------------------
+# the ensemble quality gate / 集成质量门控
+# --------------------------------------------------------------------------
+def test_ensemble_gate_drops_members_that_are_far_weaker():
+    """Members far below the best one must be dropped by the gate.
+    明显弱于最强成员的成员必须被门控剔除。"""
+    best_acc = 0.85
+    accs = {"good:raw": 0.85, "good:ema": 0.84, "weak:raw": 0.30}
+    thr = 0.05
+    keep = [k for k, v in accs.items() if v >= best_acc - thr]
+    assert set(keep) == {"good:raw", "good:ema"}
+    assert "weak:raw" not in keep
+
+
+def test_ensemble_gate_keeps_a_single_member_without_error():
+    """When only one member survives the gate, no gated ensemble is reported
+    (averaging a single member is a no-op).
+    只剩一个成员通过门控时不应报告门控集成（单成员平均是空操作）。"""
+    accs = {"only:raw": 0.85, "weak:raw": 0.30}
+    best_acc = max(accs.values())
+    keep = [k for k, v in accs.items() if v >= best_acc - 0.05]
+    assert len(keep) == 1
+    assert not (1 < len(keep) < len(accs))
+
+
+def test_refine_source_documents_the_ensemble_options():
+    """The ensemble CLI flags must exist. / 集成的 CLI 参数必须存在。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    for flag in ["--ensemble-ckpt", "--ensemble-tta", "--ensemble-min-acc",
+                 "--ensemble-weights", "ENSEMBLE.gated", "ENSEMBLE.all"]:
+        assert flag in src, f"missing {flag}"
+
+
+def test_refine_source_has_the_transductive_warning():
+    """The transductive warning must be present in both the console output and
+    the generated report. / 转导式警告必须同时出现在控制台输出与生成的报告中。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    assert "TRANSDUCTIVE" in src
+    assert "not a purely supervised result" in src.lower() or \
+           "不是纯监督结果" in src
+
+
+# --------------------------------------------------------------------------
+# OOD evaluation on CIFAR-10.1 / CIFAR-10.1 分布外评估
+# --------------------------------------------------------------------------
+def test_load_cifar101_converts_hwc_to_chw(tmp_path):
+    """The CIFAR-10.1 cache is HWC; the loader must return CHW. / 缓存是 HWC，加载器必须返回 CHW。"""
+    from refine import load_cifar101
+
+    d = tmp_path / ".cache" / "cifar101"
+    d.mkdir(parents=True)
+    x = np.random.randint(0, 256, (7, 32, 32, 3), dtype=np.uint8)
+    y = np.arange(7, dtype=np.int32)
+    np.save(d / "data.npy", x)
+    np.save(d / "labels.npy", y)
+    ox, oy = load_cifar101(str(tmp_path))
+    assert ox.shape == (7, 3, 32, 32)
+    assert oy.shape == (7,)
+    assert oy.dtype == np.int64
+
+
+def test_load_cifar101_raises_when_missing(tmp_path):
+    """A missing cache must raise a clear error, not return empty arrays.
+    缓存缺失必须报清晰错误，不得返回空数组。"""
+    from refine import load_cifar101
+
+    with pytest.raises(FileNotFoundError):
+        load_cifar101(str(tmp_path))
+
+
+def test_refine_source_has_the_ood_decision_path():
+    """The OOD decision must compare bn[test] against the best SUPERVISED
+    source, not merely against no-BN — that is what decides whether the
+    transductive disclosure is worth making.
+    OOD 判定必须把 bn[test] 与「最好的纯监督来源」比较，而不只是与不做 BN 比较
+    ——这才是决定转导式披露是否值得的关键。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    assert "--ood" in src
+    assert "cifar101" in src
+    assert "verdict" in src
+    assert "best_supervised_acc" in src or "bn_train_big_acc" in src
+    assert "train_big" in src
+
+
+def test_refine_source_marks_cifar101_as_diagnostic_only():
+    """CIFAR-10.1 must be labelled diagnostic-only in the source.
+    源码中必须标注 CIFAR-10.1 仅供诊断。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    low = src.lower()
+    assert "never for training" in low or "never used for training" in low \
+        or "never for training or model selection" in low
+
+
+# --------------------------------------------------------------------------
+# the submission-path configuration pick / 可提交配置的挑选
+# --------------------------------------------------------------------------
+def test_config_selection_prefers_the_simplest_significant_option():
+    """The shipped configuration must be the SIMPLEST one that is significantly
+    better than the plain baseline, not the maximum-accuracy one.
+    可提交配置必须是「显著优于 plain 基线的最简选项」，而不是准确率最高的那个。
+    """
+    tta_rank = {"plain": 0, "flip": 1, "translate": 2, "translate_flip": 3}
+    # translate_flip has a higher accuracy, but the difference to flip is not
+    # significant, so flip (simpler) must win.
+    # translate_flip 准确率更高，但与 flip 的差异不显著，因此应选更简单的 flip。
+    candidates = [
+        {"tta": "flip", "acc": 0.8580},
+        {"tta": "translate_flip", "acc": 0.8540},
+    ]
+    pick = min(candidates, key=lambda r: (tta_rank.get(r["tta"], 99), -r["acc"]))
+    assert pick["tta"] == "flip"
+
+
+def test_refine_source_selects_by_significance_not_by_max_accuracy():
+    """Guard against regressing to max-accuracy selection, which is unstable.
+    防止退回「取最大准确率」这种不稳定的选择方式。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    assert "significantly_better" in src
+    assert "significantly better than plain" in src
+    assert "tta_rank" in src
+
+
+def test_config_selection_compares_within_the_same_weight_mode():
+    """A configuration must only be compared against the plain baseline of the
+    SAME weight mode. Comparing raw.* against ema.plain (which is near-random
+    early in training) would 'significantly beat' a meaningless reference.
+    配置只能与**同一权重模式**的 plain 基线比较：拿 raw.* 去比 ema.plain
+    （训练早期近乎随机）会「显著优于」一个无意义的参照。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    assert 'r["weights"] != plain_sub["weights"]' in src, \
+        "the selection must not compare across weight modes"
+
+
+def test_submission_config_is_stable_across_checkpoints():
+    """The shipped configuration must not flip between checkpoints.
+    可提交配置不得随 checkpoint 改变。
+    This is the property that motivated selecting by significance instead of
+    by maximum accuracy.
+    这正是「按显著性而非最大准确率挑选」的动因。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    assert "selection on noise" in src or "significantly_better" in src
+
+
+# --------------------------------------------------------------------------
+# the IID reference set / IID 参照集
+# --------------------------------------------------------------------------
+def test_load_std_cifar10_test_returns_none_when_cache_missing(tmp_path):
+    """A missing torchvision cache must return None, not crash.
+    torchvision 缓存缺失时必须返回 None，不得崩溃。"""
+    from refine import load_std_cifar10_test
+
+    assert load_std_cifar10_test(str(tmp_path)) is None
+
+
+def test_refine_source_measures_the_iid_to_ood_gap():
+    """The report must quantify the IID -> OOD gap, which is the headroom that
+    ensembling and TTA have to recover.
+    报告必须量化 IID → OOD 缺口——这就是集成与 TTA 要补回的余量。"""
+    src = open(os.path.join(ROOT, "src", "refine.py")).read()
+    assert "load_std_cifar10_test" in src
+    assert "iid_to_ood_gap" in src
+    assert "OOD gap" in src

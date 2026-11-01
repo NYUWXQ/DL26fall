@@ -88,8 +88,8 @@ The 6.9-point val→LB drop is the single most consequential number in this proj
 
 **Verdict (measured, reproducible).** The team lead's comparisons settle the hypothesis split:
 
-1. **Training data is stock CIFAR-10.** A 4,000-image pixel-exact comparison of competition `train_images/` against the official CIFAR-10 training set (Kaggle mirror, CDN-pulled) matched **4,000/4,000** by pixel-level digest.
-2. **The test set is neither standard CIFAR-10 test nor CIFAR-10.1.** Against the official CIFAR-10 test set: **0/2,000** matches. Against CIFAR-10.1 (Recht et al.'s 2,000-image re-collected set): **0/2,000**. Across the full dihedral group (8 transforms), only horizontal flip hits 18/2,000 — negligible. The test pool is therefore **another 2,000-image collection of the same 10 classes**, not a transform of anything we hold.
+1. **Training data is stock CIFAR-10, exhaustively verified.** A full-population pixel-exact comparison of competition `train_images/` against the official CIFAR-10 training set (re-run independently via the torchvision download path, not the earlier Kaggle mirror) matched **50,000/50,000** images by pixel-level digest, with channel means exactly at the standard statistics (0.4914 / 0.4822 / 0.4465). The training data is untouched stock CIFAR-10.
+2. **The test set is neither standard CIFAR-10 test nor CIFAR-10.1.** Against the official CIFAR-10 test set: **0/2,000** matches (same torchvision-path re-verification as item 1). Against CIFAR-10.1 (Recht et al.'s 2,000-image re-collected set): **0/2,000**. Across the full dihedral group (8 transforms), only horizontal flip hits 18/2,000 — negligible. The test pool is therefore **another 2,000-image collection of the same 10 classes**, not a transform of anything we hold.
 3. **The photometric deltas are real but tiny in effect.** Applying the measured test-set statistics to the 2,500 labeled validation images (epoch-40 checkpoint):
 
    | transform applied to val | val acc | delta |

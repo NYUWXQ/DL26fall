@@ -70,7 +70,7 @@ class CifarNumpy(Dataset):
     内存 uint8 数组的 Tensor 视图，可选数据增强。"""
 
     def __init__(self, x: np.ndarray, y: np.ndarray, train: bool, aug: str = "basic",
-                 randaug_n: int = 2, randaug_m: int = 9):
+                 randaug_n: int = 2, randaug_m: int = 9, erase_p: float = 0.25):
         self.x, self.y = x, y
         self.train = train
         if train:
@@ -81,7 +81,7 @@ class CifarNumpy(Dataset):
                 ops.append(T.RandAugment(num_ops=randaug_n, magnitude=randaug_m))
             ops.append(T.ToTensor())
             if aug == "strong":
-                ops.append(T.RandomErasing(p=0.25, scale=(0.02, 0.2)))
+                ops.append(T.RandomErasing(p=erase_p, scale=(0.02, 0.2)))
             ops.append(T.Normalize(MEAN, STD))
             self.tf = T.Compose(ops)
         else:

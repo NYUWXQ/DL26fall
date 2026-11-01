@@ -10,7 +10,7 @@
 #   且必须只取一次快照，使各权重变体处于同一 epoch。
 #
 # Usage / 用法:
-#   bash scripts/run_refine_final.sh [checkpoint]
+#   bash scripts/run_refine_final.sh [checkpoint] [extra ensemble members...]
 #
 # The `--bn-recal` value is deliberately `none`: per the group's conclusion the
 # BatchNorm recalibration showed NO domain effect (the controlled experiment
@@ -26,6 +26,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 CKPT="${1:-runs/wrn22x4_s0/final.pt}"
+shift || true
+EXTRA=("$@")
+
 PY="$ROOT/.venv/bin/python"
 
 if [[ ! -f "$CKPT" ]]; then
@@ -35,11 +38,15 @@ if [[ ! -f "$CKPT" ]]; then
 fi
 
 echo "[run_refine_final] checkpoint: $CKPT"
+echo "[run_refine_final] extra ensemble members: ${EXTRA[*]:-(none)}"
+
 "$PY" src/refine.py \
   --ckpt "$CKPT" \
   --weights both \
   --bn-source train,train_matched,test \
   --bn-recal none \
+  --ensemble-ckpt "${EXTRA[@]}" \
+  --ensemble-weights raw \
   --out-md "$ROOT/analysis/refine.md" \
   --out-json "$ROOT/analysis/refine.json"
 

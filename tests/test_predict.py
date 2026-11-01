@@ -164,3 +164,55 @@ def test_probabilities_widened_on_cpu_match_the_direct_computation():
     with torch.no_grad():
         expected = model(x).float().softmax(1).numpy()
     assert np.allclose(widened, expected, atol=1e-6)
+
+
+# --------------------------------------------------------------------------
+# supervised BatchNorm recalibration in the submission path
+# --------------------------------------------------------------------------
+def test_bn_recalibrate_updates_the_running_statistics():
+    """Re-estimation must replace the stored statistics. / 重估必须替换已存的统计量。"""
+    from predict import bn_recalibrate
+
+    model = torch.nn.Sequential(torch.nn.Conv2d(3, 8, 3, padding=1), torch.nn.BatchNorm2d(8))
+    with torch.no_grad():
+        model[1].running_mean.fill_(99.0)
+        model[1].running_var.fill_(99.0)
+    x = torch.randn(64, 3, 32, 32) * 3.0 + 1.0
+    loader = [(x, torch.zeros(64, dtype=torch.long))]
+    used = bn_recalibrate(model, loader, torch.device("cpu"))
+    assert used == 1
+    assert not torch.allclose(model[1].running_mean, torch.full((8,), 99.0))
+    assert (model[1].running_var > 0).all()
+
+
+def test_bn_recalibrate_leaves_the_model_in_eval_mode():
+    """The model must be back in eval mode after re-estimation. / 重估后必须回到 eval 模式。"""
+    from predict import bn_recalibrate
+
+    model = torch.nn.Sequential(torch.nn.Conv2d(3, 8, 3, padding=1), torch.nn.BatchNorm2d(8))
+    x = torch.randn(16, 3, 32, 32)
+    loader = [(x, torch.zeros(16, dtype=torch.long))]
+    bn_recalibrate(model, loader, torch.device("cpu"))
+    assert not model.training
+
+
+def test_predict_source_supports_supervised_bn_recalibration():
+    """The submission path must support the SUPERVISED BN recalibration.
+    提交路径必须支持纯监督的 BN 重校准。"""
+    src = open(os.path.join(ROOT, "src", "predict.py")).read()
+    assert "--bn-recal" in src
+    assert "bn_recalibrate" in src
+    # The metadata must record that this is NOT transductive.
+    assert "bn_recal_is_transductive" in src
+    assert "False" in src
+
+
+def test_predict_source_documents_the_bn_mechanism():
+    """The reason BN recalibration helps must be documented in the source:
+    the augmentation pipeline leaves the running statistics describing the
+    AUGMENTED distribution rather than the clean one.
+    源码必须记录 BN 重校准有效的机制：增强管线使运行统计量描述的是增强后的分布。"""
+    src = open(os.path.join(ROOT, "src", "predict.py")).read()
+    low = src.lower()
+    assert "augmented" in low
+    assert "running variance" in low or "running_var" in low

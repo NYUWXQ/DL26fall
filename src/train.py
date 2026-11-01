@@ -103,7 +103,15 @@ def main() -> None:
     ap.add_argument("--label-smoothing", type=float, default=0.1)
     ap.add_argument("--mix", default="both", choices=["none", "mixup", "cutmix", "both"])
     ap.add_argument("--mix-alpha", type=float, default=1.0)
+    ap.add_argument("--mixup-alpha", type=float, default=0.2, help="beta alpha for MixUp / MixUp 的 beta 参数")
+    ap.add_argument("--cutmix-alpha", type=float, default=1.0, help="beta alpha for CutMix / CutMix 的 beta 参数")
     ap.add_argument("--aug", default="strong", choices=["basic", "strong"])
+    ap.add_argument("--randaug-m", type=int, default=9, help="RandAugment magnitude / RandAugment 强度")
+    ap.add_argument("--erase-p", type=float, default=0.25, help="RandomErasing probability / 随机擦除概率")
+    ap.add_argument("--full-data", action="store_true", help="train on all 50k, no holdout / 全量训练不留验证集")
+    ap.add_argument("--mix-always", action="store_true", help="mix every step (teammate recipe) / 每步都混合")
+    ap.add_argument("--ema-dynamic", action="store_true", help="decay=min(0.999,(1+step)/(10+step)) / 动态 EMA")
+    ap.add_argument("--eval-ood", default="", help="optional .npy dir with cifar-10.1 data/labels for OOD monitoring / OOD 监控")
     ap.add_argument("--drop", type=float, default=0.0)
     ap.add_argument("--ema-decay", type=float, default=0.999)
     ap.add_argument("--out", default="runs/run")
@@ -128,8 +136,18 @@ def main() -> None:
     # changes initialisation and augmentation randomness.
     # 验证集固定用 seed=0 划分，保证所有实验/集成成员在同一批 2500 张上可比；
     # --seed 只改变初始化与增强随机性。
-    tr_x, tr_y, va_x, va_y = load_train(args.root, seed=0)
-    train_ds = CifarNumpy(tr_x, tr_y, train=True, aug=args.aug)
+    if args.full_data:
+        # Full-data run: train on all 50,000 images; validation falls back to the
+        # same 2,500 held-out images (now seen in training) purely for monitoring.
+        # 全量训练：用全部 5 万张；验证集退回同一批 2500 张（已被训练见过），仅用于监控。
+        from data import build_cache
+        tr_x, tr_y = build_cache(args.root, "train")
+        va_x, va_y = tr_x[:2500], tr_y[:2500]
+        print("[data] FULL-DATA mode: 50000 train images (val is in-sample)", flush=True)
+    else:
+        tr_x, tr_y, va_x, va_y = load_train(args.root, seed=0)
+    train_ds = CifarNumpy(tr_x, tr_y, train=True, aug=args.aug, randaug_m=args.randaug_m,
+                          erase_p=args.erase_p)
     val_ds = CifarNumpy(va_x, va_y, train=False)
     train_ld = make_loader(train_ds, args.batch_size, True, args.workers)
     val_ld = make_loader(val_ds, 512, False, args.workers)
@@ -192,12 +210,13 @@ def main() -> None:
                 g["lr"] = lr_at(step, total_steps, args.lr, args.warmup * max(1, len(train_ld)))
 
             if args.mix == "mixup":
-                xb, ya, yb, lam = mix_batch(x, y, "mixup", args.mix_alpha)
+                xb, ya, yb, lam = mix_batch(x, y, "mixup", args.mixup_alpha)
             elif args.mix == "cutmix":
-                xb, ya, yb, lam = mix_batch(x, y, "cutmix", args.mix_alpha)
-            elif args.mix == "both" and np.random.rand() < 0.5:
+                xb, ya, yb, lam = mix_batch(x, y, "cutmix", args.cutmix_alpha)
+            elif args.mix == "both" and (args.mix_always or np.random.rand() < 0.5):
                 mode = "mixup" if np.random.rand() < 0.5 else "cutmix"
-                xb, ya, yb, lam = mix_batch(x, y, mode, args.mix_alpha)
+                alpha = args.mixup_alpha if mode == "mixup" else args.cutmix_alpha
+                xb, ya, yb, lam = mix_batch(x, y, mode, alpha)
             else:
                 xb, ya, yb, lam = x, y, y, 1.0
 
@@ -206,6 +225,8 @@ def main() -> None:
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()
+            if args.ema_dynamic:
+                ema.decay = min(0.999, (1 + step) / (10 + step))
             ema.update(model)
             run_loss += loss.item() * y.numel()
             seen += y.numel()

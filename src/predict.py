@@ -44,6 +44,45 @@ def view_probs(model: torch.nn.Module, x: torch.Tensor, mode: str) -> torch.Tens
     return torch.stack(probs).mean(0)
 
 
+@torch.no_grad()
+def bn_recalibrate(model: torch.nn.Module, loader, device: torch.device) -> int:
+    """Re-estimate the BatchNorm running statistics with fresh forward passes.
+    用新的前向传播重新估计 BatchNorm 的运行统计量。
+
+    The statistics come from the images in `loader`; they must be CLEAN
+    (un-augmented) and, for the supervised variant, LABELLED TRAINING images.
+    统计量来自 loader 中的图片，必须是干净的（未增强）、
+    且在纯监督变体下必须是有标签的训练图。
+
+    reset_running_stats() + momentum=None gives a cumulative moving average.
+    重置统计量并把 momentum 设为 None，从而使用累积滑动平均。
+    model.train() makes BatchNorm use the batch statistics, which is the
+    standard re-estimation recipe.
+    train() 模式下 BN 使用批统计量，这是标准的重估做法。
+
+    Returns the number of batches used. / 返回使用的批数。
+    """
+    for m in model.modules():
+        if isinstance(m, torch.nn.BatchNorm2d):
+            m.reset_running_stats()
+            m.momentum = None  # cumulative moving average / 累积滑动平均
+    model.train()
+    used = 0
+    for xb, _y in loader:
+        model(xb.to(device))
+        used += 1
+    # Always end in EVAL mode: re-estimation is an inference-time fix-up, and
+    # leaving the model in train mode would make BatchNorm use the batch
+    # statistics of every prediction batch instead of the ones we just
+    # computed. (Restoring "the previous state" is not enough: the model
+    # handed in here was never explicitly put into eval mode.)
+    # 结束时始终处于 eval 模式：重估是推理期的修正，若模型留在 train 模式，
+    # BatchNorm 会在每次预测时改用批统计量，而不是刚算好的那些。
+    # （不能简单地「恢复原状态」：传进来的模型从未被显式置为 eval。）
+    model.eval()
+    return used
+
+
 def _n_train_rows(root: str) -> int:
     """Number of training rows in the manifest (cheap CSV header count).
     清单里的训练样本行数（只数 CSV 行，不解码图片）。"""
@@ -125,12 +164,47 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=512)
     ap.add_argument("--out", default="submissions/submission.csv")
     ap.add_argument("--probs-out", default="", help="optional .npy of averaged probabilities / 可选的概率矩阵")
+    ap.add_argument("--bn-recal", default="none", choices=["none", "train"],
+                    help="re-estimate BatchNorm statistics on the labelled training images "
+                         "before predicting / 在有标签训练图上重估 BN 统计量")
+    ap.add_argument("--bn-samples", type=int, default=10000,
+                    help="training images used for the BN re-estimation / BN 重校准用图数")
     args = ap.parse_args()
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     x, ids = load_test(args.root)
     ds = CifarNumpy(x, np.zeros(len(x), dtype=np.int64), train=False)
     loader = torch.utils.data.DataLoader(ds, batch_size=args.batch_size, shuffle=False, num_workers=2)
+
+    # ---- optional BatchNorm recalibration / 可选的 BatchNorm 重校准
+    # This is a SUPERVISED procedure: the statistics come from labelled
+    # TRAINING images only. It never touches the test images, so it needs no
+    # transductive disclosure.
+    # 这是**纯监督**过程：统计量只来自有标签的**训练**图，完全不碰测试图，
+    # 因此无需任何转导式披露。
+    #
+    # Why it matters: the training pipeline applies RandAugment / RandomErasing /
+    # MixUp / CutMix, and the BatchNorm running statistics end up describing the
+    # AUGMENTED distribution rather than the clean one. Measured on a mid-training
+    # checkpoint, the stored running variance of a mid network was ~0.009 while
+    # the true clean-data variance is ~1.0 -- a ~110x scale mismatch. Re-estimating
+    # the statistics on clean training data fixes it.
+    # 为什么重要：训练管线用了 RandAugment / RandomErasing / MixUp / CutMix，
+    # BatchNorm 的运行统计量描述的是**增强后**而非干净数据的分布。实测中期
+    # checkpoint 的中层 running_var 约 0.009，而干净数据的真实方差约 1.0——
+    # 差约 110 倍。在干净训练图上重估即可修正。
+    bn_loader = None
+    if args.bn_recal == "train":
+        from data import load_train
+        tr_x, tr_y, _, _ = load_train(args.root, seed=0)
+        n = min(args.bn_samples, len(tr_x))
+        bn_loader = torch.utils.data.DataLoader(
+            CifarNumpy(tr_x[:n], tr_y[:n], train=False),
+            batch_size=args.batch_size, shuffle=False, num_workers=2)
+        print(f"[bn-recal] will re-estimate BatchNorm statistics on {n} labelled "
+              f"training images (supervised, test images untouched) / "
+              f"将在 {n} 张有标签训练图上重估 BN 统计量（纯监督，不碰测试图）",
+              flush=True)
 
     acc = np.zeros((len(x), 10), dtype=np.float64)
     metas = []
@@ -139,6 +213,9 @@ def main() -> None:
         metas.append(meta)
         print(f"[ckpt] {meta['path']} weights={meta['weights']} params={meta['params']:,} "
               f"ema_residual_init={meta['ema_residual_init_weight']}", flush=True)
+        if bn_loader is not None:
+            bn_recalibrate(model, bn_loader, device)
+            print(f"[bn-recal] done for {meta['path']}", flush=True)
         offset = 0
         for xb, _ in loader:
             xb = xb.to(device)
@@ -167,9 +244,21 @@ def main() -> None:
     with open(meta_path, "w") as fh:
         json.dump({"ckpts": metas, "tta": args.tta, "pred_hist": np.bincount(pred, minlength=10).tolist(),
                    "mean_max_prob": float(probs.max(1).mean()),
+                   # Record the BatchNorm handling so the submission is auditable:
+                   # "none" = the stored (augmented-distribution) statistics,
+                   # "train" = re-estimated on labelled training images (supervised).
+                   # 记录 BN 处理方式以便审计。
+                   "bn_recal": args.bn_recal,
+                   "bn_recal_is_transductive": False,
+                   "bn_recal_source": ("labelled training images" if args.bn_recal == "train"
+                                       else None),
                    "sha256": hashlib.sha256(open(args.out, "rb").read()).hexdigest()}, fh, indent=1)
     print(f"[done] {args.out} rows={len(order)} mean_max_prob={probs.max(1).mean():.4f}")
     print(f"[done] label histogram {np.bincount(pred, minlength=10).tolist()}")
+    if args.bn_recal == "train":
+        print("[done] BN statistics were re-estimated on labelled TRAINING images "
+              "(supervised; test images never used) / "
+              "BN 统计量在有标签训练图上重估（纯监督，未使用测试图）")
 
 
 if __name__ == "__main__":
