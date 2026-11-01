@@ -15,3 +15,8 @@ test_images/
 # Run artifacts / 运行产物
 runs/
 submissions/
+
+# Transfer archives and probability caches (regenerable, not source) / 可再生的传输包与概率缓存
+*.tgz
+analysis/ckpt_probs/
+analysis/hpc_probs/

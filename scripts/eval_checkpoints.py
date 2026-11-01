@@ -35,17 +35,18 @@ from models import build_model, n_params  # noqa: E402
 @torch.no_grad()
 def probs_for(model, x: np.ndarray, mode: str = "flip", bs: int = 500) -> np.ndarray:
     """Average softmax over TTA views. / 对 TTA 各视角取 softmax 平均。"""
+    dev = next(model.parameters()).device
     ds = CifarNumpy(x, np.zeros(len(x), dtype=np.int64), train=False)
     out = []
     for i in range(0, len(x), bs):
-        xb = torch.stack([ds[j][0] for j in range(i, min(i + bs, len(x)))])
+        xb = torch.stack([ds[j][0] for j in range(i, min(i + bs, len(x)))]).to(dev)
         views = [xb]
         if mode in ("flip", "translate_flip"):
             views.append(xb.flip(-1))
         if mode == "translate_flip":
             pad = F.pad(xb, (2, 2, 2, 2), mode="reflect")
             views += [pad[:, :, dy:dy + 32, dx:dx + 32] for dy, dx in ((0, 4), (4, 0), (4, 4))]
-        out.append(torch.stack([model(v).float().softmax(1) for v in views]).mean(0))
+        out.append(torch.stack([model(v).float().softmax(1) for v in views]).mean(0).cpu())
     return torch.cat(out).numpy()
 
 
