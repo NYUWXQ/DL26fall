@@ -11,7 +11,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms as T
 
-from model import WideResNet
+from model import build_model
 from refine import probabilities
 from train import ROOT, MEAN, STD
 
@@ -54,6 +54,7 @@ def main():
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--tta', choices=['plain', 'flip', 'translate'])
     parser.add_argument('--device', default='cuda:0')
+    parser.add_argument('--precision', choices=['bf16', 'fp32'])
     args = parser.parse_args()
     if args.out.exists():
         raise FileExistsError(args.out)
@@ -62,7 +63,18 @@ def main():
     torch.set_num_threads(2)
     device = torch.device(args.device)
     checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
-    model = WideResNet(**checkpoint['config']['model']).to(device, memory_format=torch.channels_last).eval()
+    precision = args.precision or checkpoint.get('inference_precision', 'bf16')
+    if checkpoint.get('kind') == 'lejepa_backbone':
+        raise ValueError('Fine-tune the self-supervised backbone before classification')
+    if checkpoint['config'].get('teacher_only') or checkpoint['config']['parameters'] > 5_000_000:
+        raise ValueError('Competition predictions require a student model with at most 5M parameters')
+    if device.type == 'cuda':
+        torch.cuda.set_device(device)
+        torch.backends.cudnn.benchmark = True
+        if precision == 'fp32':
+            torch.backends.cudnn.allow_tf32 = False
+            torch.backends.cuda.matmul.allow_tf32 = False
+    model = build_model(checkpoint['config']['model']).to(device, memory_format=torch.channels_last).eval()
     model.load_state_dict(checkpoint['model'])
     count = sum(p.numel() for p in model.parameters())
     assert count == checkpoint['config']['parameters'] and count <= 5_000_000
@@ -70,9 +82,11 @@ def main():
     if mode is None:
         raise ValueError('Specify --tta using the held-out validation result')
     dataset = CompetitionImages(args.data)
-    loader = DataLoader(dataset, batch_size=256, shuffle=False, num_workers=2, pin_memory=True)
+    loader = DataLoader(dataset, batch_size=checkpoint['config'].get('eval_batch_size', 500),
+                        shuffle=False, num_workers=2, pin_memory=True)
     predictions = []
-    with torch.inference_mode(), torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == 'cuda'):
+    with torch.inference_mode(), torch.autocast(device.type, dtype=torch.bfloat16,
+                                               enabled=device.type == 'cuda' and precision == 'bf16'):
         for images in loader:
             images = images.to(device, memory_format=torch.channels_last, non_blocking=True)
             predictions.append(probabilities(model, images, mode).cpu())
@@ -91,6 +105,7 @@ def main():
     assert all(0 <= int(r['label']) <= 9 for r in rows)
     np.save(args.out.with_suffix('.probabilities.npy'), probs)
     receipt = {'checkpoint': str(args.checkpoint.resolve()), 'parameters': count, 'inference': mode,
+               'precision': precision,
                'rows': len(rows), 'label_counts': np.bincount(labels, minlength=10).tolist(),
                'checkpoint_sha256': hashlib.sha256(args.checkpoint.read_bytes()).hexdigest(),
                'submission_sha256': hashlib.sha256(args.out.read_bytes()).hexdigest()}

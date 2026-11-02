@@ -22,10 +22,10 @@ def select_result(results):
     return max(choices, key=lambda item: item['validation_accuracy'])
 
 
-def launch(name, options, device):
+def launch(name, options, device, epochs=300):
     directory = ROOT / 'runs' / name
     command = [sys.executable, '-u', str(ROOT / 'train.py'), '--name', name,
-               '--device', f'cuda:{device}', '--epochs', '300', *options]
+               '--device', f'cuda:{device}', '--epochs', str(epochs), *options]
     if (directory / 'result.json').exists():
         return None
     if (directory / 'last.pt').exists():
