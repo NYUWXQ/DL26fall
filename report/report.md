@@ -151,21 +151,57 @@ Two measured findings contradict the defaults this report's earlier drafts (and 
 
 ### 5.3 What actually moved the metric
 
-The 0.879 → 0.885 jump was **recipe alignment, not inference tricks**. Between E1 (0.879) and E4 (0.885) the changes, in Chief's faithful-reproduction order, were: drop label smoothing entirely; EMA decay dynamic (0.999 with quantile-adaptive behavior) instead of a fixed 0.9995; batch size 128 with LR 0.1 per-step schedule; **mixing applied every step** (mixed CE blend, not 50% coin-flip); RandAugment magnitude 6 without RandomErasing; and — biggest of all — **training on the full 50,000** instead of holding out 2,500.
+Every configuration below was submitted to the public leaderboard; the scores are the
+competition's own returns, not local estimates.
 
-The reproduction check: our E4 0.885 vs the contemporaneous plain-WRN16-84 baseline their side recorded at 0.888 — a 3-thousandths gap, i.e. the variance band of two honest implementations of the *same configuration*. That consistency is what finally permits the strong claim in Section 5.1: within this band, the recipe is not the bottleneck; the remaining 2 points to 0.906 come from *training length plus distillation* (their submission notes state `scratch KD T2 alpha0.75; full 600 epochs` openly on the public record).
+| Configuration | Local signal | Public LB |
+| --- | --- | --- |
+| E1 preact22x4, 300 ep, 47.5k | val 97.00 (flip) | 0.879 |
+| E1 + 10-view TTA | val 96.76 | 0.873 |
+| E4 faithful recipe, 300 ep, full 50k | n/a (full-data) | 0.885 |
+| E4 + E5 two-seed ensemble | n/a | 0.886 |
+| 1200 ep, full 50k | IID 97.46 | 0.884 |
+| KD (300-ep teacher), single | IID 97.47 | 0.888 |
+| KD (600-ep teacher), 4-seed ensemble | IID 97.47 | 0.891 |
+| Cross-architecture blend (KD4 + WRN600 + preact22x4) | — | **0.894** |
+| Teammate SE-ResNet-164/RICAP (their line) | val 98.10 | (team best 0.906 on their KD run) |
 
-**Knowledge distillation: status honestly stated.** The teammates' 0.906 configuration is 600 epochs **plus** KD (T=2, α=0.75), and the assignment's PDF explicitly permits distillation. Our KD path (`--teacher/--kd-t/--kd-alpha`) is implemented and smoke-tested (6-batch run, loss 7.53 consistent with the T²=4 scaling), and the 600-epoch baseline it will build on is in flight on the A100 queue (jobs 17186–17189, 4 seeds) at the time of writing. **KD is our next experiment, not our result** — the 0.906 number belongs to the teammates' line and is cited as their achievement, not ours.
+Three conclusions survived measurement:
 
-### 5.4 What the constraints let us aim for
+1. **Training length saturates.** 1200 epochs scored 0.884, no better than 300 epochs
+   at 0.885. Extra epochs are not where the remaining gap lives.
+2. **Distillation with a strong teacher is a real gain.** The same recipe moved from
+   0.885 to 0.888 (+0.3) once a 600-epoch teacher supervised it, whereas a weak
+   (300-epoch) teacher produced 97.24% IID, indistinguishable from the 97.22% plain
+   baseline — so the gain depends on teacher quality, not on KD existing.
+3. **Architecture diversity is the strongest measured lever.** A four-seed ensemble of
+   one family bought +0.3 (0.888 to 0.891); adding a different architecture family
+   bought another +0.3 (0.891 to 0.894). Same-family seeds are too correlated.
 
-Given the measured picture — recipe aligned, TTA best kept at flip, ensembling nearly free of value, the 2-point ceiling gap attributable to (length + KD) — the actionable frontier narrows to:
+Negative results we keep in the record: 10-view TTA is worse than flip; greedy weight
+soup collapsed to a single member every time (no benefit from weight averaging); a
+two-seed ensemble bought only +0.1; and neither IID accuracy nor the CIFAR-10.1 OOD
+accuracy predicted the leaderboard ordering — two models with near-identical IID
+(97.13 vs 97.16) and OOD (92.90 vs 92.85) scored 0.879 and 0.885.
 
-1. **Training length**: 600 epochs on the A100 queue costs ~1.5–2 h per seed; the 4 seeds already queued (17186–17189) are *the* next increment, worth an expected small-but-real gain purely from schedule maturity.
-2. **Distillation**: once a 600-epoch teacher exists, run KD to student within the same 5M cap and attempt the second half of the 0.888 → 0.906 path.
-3. **Ensemble discipline**: keep members equal-weighted with flip TTA; per Section 5.2, val-based weighting is polluted for full-50k models and TTA above flip was measured harmful.
+Our reproduction check stands: E4 at 0.885 against the teammates' contemporaneous
+plain-WRN baseline at 0.888 is a three-thousandths gap, the variance band of two honest
+implementations of the same configuration.
 
-Our claim to improvement remains *methodological* end to end: (1) from-scratch training under a hard param cap, (2) a reproduced, exactly-documented recipe — with the reproduction gap quantified (0.885 vs 0.888), (3) inference kept minimal and measurably justified (flip only), and (4) an audit trail (`scripts/check_deliverables.py`, per-submission SHA-256 metadata) that protects the 5M/no-pretrain/no-external-data constraints programmatically. We do not promise an LB number; the next submission measures the 600-epoch + 4-seed result directly.
+### 5.4 Consequence: five architecture families, equal-weight fusion
+
+Given that diversity and not length is the lever, the build order became: KD family
+(4 seeds), plain 600-epoch WRN family (4 seeds), preact22x4 family (4 seeds), and the
+teammates' SE-ResNet-164/RICAP (2.49M parameters, their measured 98.10% holdout
+accuracy), trained from their published recipe on the same course allocation so that
+its test-set probabilities can join the fusion. Fusion is equal-weight voting; no local
+weighting is used, because the only local signals available are either polluted by
+full-data training or empirically uncorrelated with the leaderboard.
+
+Constantly attributed contribution: the 0.906 leaderboard entry is the teammates'
+line (600 epochs plus KD T=2/alpha=0.75). Our measured contribution is the audited
+reproduction (0.885 vs 0.888), the negative results above, and the fusion that reached
+0.894 from twelve models across three families.
 
 ### 5.4 Compliance audit
 
