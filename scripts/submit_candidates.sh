@@ -25,7 +25,10 @@ for f in "$@"; do
   fi
   # Basic guard: 2000 data rows + correct header. / 基本校验：2000 数据行 + 正确表头。
   rows=$(wc -l < "$f")
-  if [ "$rows" -ne 2001 ] || [ "$(head -1 "$f")" != "id,label" ]; then
+  # csv.writer emits CRLF, so strip the carriage return before comparing.
+  # csv.writer 输出 CRLF，比较前先去掉回车。
+  header=$(head -1 "$f" | tr -d '\r')
+  if [ "$rows" -ne 2001 ] || [ "$header" != "id,label" ]; then
     echo "[skip] $f looks malformed (rows=$rows)" | tee -a "$LOG"
     continue
   fi
