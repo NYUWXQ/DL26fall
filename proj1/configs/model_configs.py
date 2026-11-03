@@ -1,5 +1,5 @@
 """
-Architectural Configuration Definitions for Deep Learning Project 1.
+Architectural Configuration Definitions for Deep Learning Project 1 (Try 5: Ultra Sub-5M).
 Built 100% from scratch based on the Project 1 specification:
   - N:   Number of residual stages (len(channels))
   - B_i: Number of residual blocks in stage i (blocks_per_stage)
@@ -22,7 +22,7 @@ class ResNetSpec:
     conv_kernels: List[int]      # F_i for i = 1..N
     skip_kernels: List[int]      # K_i for i = 1..N
     pool_size: int               # P
-    dropout_rate: float = 0.1
+    dropout_rate: float = 0.0
     num_classes: int = 10
 
     def __post_init__(self) -> None:
@@ -41,7 +41,7 @@ def get_architecture_registry() -> Dict[str, ResNetSpec]:
     under the 5,000,000 trainable parameter ceiling.
     """
     return {
-        # 1. Baseline 4-Stage Tapered ResNet (4,184,522 parameters)
+        # 1. Baseline 4-Stage Tapered ResNet (4,184,522 parameters — 83.69% of 5M budget)
         "baseline_4stage": ResNetSpec(
             name="baseline_4stage",
             stem_channels=64,
@@ -52,7 +52,7 @@ def get_architecture_registry() -> Dict[str, ResNetSpec]:
             pool_size=4,
             dropout_rate=0.0,
         ),
-        # 2. Wide 3-Stage ResNet with P=8 Average Pooling (4,773,930 parameters)
+        # 2. Wide 3-Stage ResNet with P=8 Average Pooling (4,773,930 parameters — 95.48% of 5M budget)
         "wide_3stage": ResNetSpec(
             name="wide_3stage",
             stem_channels=64,
@@ -63,7 +63,7 @@ def get_architecture_registry() -> Dict[str, ResNetSpec]:
             pool_size=8,
             dropout_rate=0.05,
         ),
-        # 3. 3x3 Spatial Skip-Connection Kernel Variant (4,839,882 parameters)
+        # 3. 3x3 Spatial Skip-Connection Kernel Variant (4,839,882 parameters — 96.80% of 5M budget)
         "skip3x3_4stage": ResNetSpec(
             name="skip3x3_4stage",
             stem_channels=64,
@@ -74,7 +74,7 @@ def get_architecture_registry() -> Dict[str, ResNetSpec]:
             pool_size=4,
             dropout_rate=0.05,
         ),
-        # 4. Champion High-Resolution Early-Depth ResNet (4,917,450 parameters — 98.35% of 5M budget)
+        # 4. Early-Depth Champion ResNet (4,917,450 parameters — 98.35% of 5M budget)
         "champion_sub5m": ResNetSpec(
             name="champion_sub5m",
             stem_channels=64,
@@ -84,5 +84,16 @@ def get_architecture_registry() -> Dict[str, ResNetSpec]:
             skip_kernels=[1, 1, 1, 1],
             pool_size=4,
             dropout_rate=0.1,
+        ),
+        # 5. Try 5 Ultra Sub-5M ResNet (4,977,834 parameters — 99.56% of 5M budget)
+        "ultra_sub5m": ResNetSpec(
+            name="ultra_sub5m",
+            stem_channels=64,
+            channels=[64, 144, 208, 280],
+            blocks_per_stage=[2, 2, 2, 2],
+            conv_kernels=[3, 3, 3, 3],
+            skip_kernels=[1, 1, 1, 1],
+            pool_size=4,
+            dropout_rate=0.0,
         ),
     }

@@ -188,6 +188,6 @@ def audit_model_parameters(model: CustomResNet, max_budget: int = 5_000_000, run
             from torchsummary import summary
             dev = "cuda" if next(model.parameters()).is_cuda else "cpu"
             summary(model, input_size=(3, 32, 32), device=dev)
-        except ImportError:
-            pass
+        except Exception as e:
+            print(f"(Note: torchsummary skipped: {e})")
     return total_params

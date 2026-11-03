@@ -14,7 +14,7 @@ Matches the exact required schema of `sample_submission.csv`:
 
 Usage (Folder + CSV):
   python3 predict_kaggle.py \
-      --checkpoint ./outputs/champion_sub5m_best.pth \
+      --checkpoint ./outputs/ultra_sub5m_best.pth \
       --test-dir ./test_images \
       --test-csv ./test.csv \
       --output submission.csv
@@ -51,7 +51,7 @@ def main() -> None:
     elif "config" in ckpt:
         spec = ResNetSpec(**ckpt["config"])
     else:
-        spec = get_architecture_registry()["champion_sub5m"]
+        spec = get_architecture_registry()["ultra_sub5m"]
 
     model = CustomResNet(spec).to(device)
     model.load_state_dict(ckpt["model_state_dict"])

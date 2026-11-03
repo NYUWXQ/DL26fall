@@ -1,4 +1,4 @@
-"""From-Scratch Modified ResNet Package for Deep Learning Project 1."""
+"""From-Scratch Modified ResNet Package for Deep Learning Project 1 (Try 5: Ultra Sub-5M)."""
 
 from src.dataset import (
     CIFAR10_CLASSES,
@@ -11,7 +11,13 @@ from src.dataset import (
     load_kaggle_evaluation_tensors,
 )
 from src.model import CustomResNet, ResidualUnit, audit_model_parameters, count_trainable_parameters
-from src.trainer import evaluate_network, evaluate_per_class_accuracy, train_and_evaluate
+from src.trainer import (
+    evaluate_network,
+    evaluate_per_class_accuracy,
+    mixup_criterion,
+    mixup_data,
+    train_and_evaluate,
+)
 
 __all__ = [
     "CIFAR10_CLASSES",
@@ -28,5 +34,7 @@ __all__ = [
     "count_trainable_parameters",
     "evaluate_network",
     "evaluate_per_class_accuracy",
+    "mixup_criterion",
+    "mixup_data",
     "train_and_evaluate",
 ]

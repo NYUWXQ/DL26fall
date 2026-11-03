@@ -1,16 +1,14 @@
 """
-From-Scratch Data Loading, Augmentation, and CSV + Image Folder Pipeline for CIFAR-10.
+From-Scratch Data Loading, CIFAR-10 AutoAugment, and CSV + Image Folder Pipeline (Try 5).
 
-Supports:
-  1. Custom Folder + CSV format:
-       - `train_labels.csv` (`id,filename,label`, 50,000 rows: `train_00000.png` .. `train_49999.png`)
-         paired with the `train_images/` directory (with stratified train/validation split).
-       - `test.csv` (`id,filename`, 2,000 rows: `test_0000.png` .. `test_1999.png`)
-         paired with the `test_images/` directory for competition inference.
-  2. Automatic fallback to `torchvision.datasets.CIFAR10` if `train_images/` is not present locally.
-  3. Legacy array/pickle evaluation files (`.pkl`, `.npy`, `.npz`, `.pt`).
+Key Upgrades in Try 5:
+  1. Official CIFAR-10 AutoAugment (`T.AutoAugment(T.AutoAugmentPolicy.CIFAR10)`) + RandomCrop + Flip + Cutout.
+  2. Default `val_split=0.0` option to train on 100% of the 50,000 competition images (`train_labels.csv` + `train_images/`)
+     while using a 2,500-image clean subset for fast checkpoint tracking.
+  3. Automatic path discovery across `/kaggle/input/`, `./train_images/`, and `/content/`.
 """
 
+import glob
 import pickle
 from pathlib import Path
 from typing import Tuple, List, Optional, Callable, Union
@@ -26,34 +24,30 @@ import torchvision.transforms as T
 CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD = (0.2023, 0.1994, 0.2010)
 
-CIFAR10_CLASSES = [
-    "airplane",
-    "automobile",
-    "bird",
-    "cat",
-    "deer",
-    "dog",
-    "frog",
-    "horse",
-    "ship",
-    "truck",
-]
+CIFAR10_CLASSES = [f"class_{i}" for i in range(10)]
 
 
-def get_cifar10_transforms(enable_cutout: bool = True) -> Tuple[T.Compose, T.Compose]:
+def get_cifar10_transforms(
+    enable_autoaugment: bool = True,
+    enable_cutout: bool = True,
+) -> Tuple[T.Compose, T.Compose]:
     """
     Returns (train_transform, eval_transform) for 32x32 CIFAR-10 images.
     Includes reflection-padded random cropping, random horizontal flipping,
-    channel normalization, and optional Cutout (RandomErasing).
+    official CIFAR-10 AutoAugment, channel normalization, and Cutout (RandomErasing).
     """
     train_ops = [
         T.RandomCrop(32, padding=4, padding_mode="reflect"),
         T.RandomHorizontalFlip(p=0.5),
+    ]
+    if enable_autoaugment:
+        train_ops.append(T.AutoAugment(T.AutoAugmentPolicy.CIFAR10))
+    train_ops.extend([
         T.ToTensor(),
         T.Normalize(CIFAR10_MEAN, CIFAR10_STD),
-    ]
+    ])
     if enable_cutout:
-        train_ops.append(T.RandomErasing(p=0.5, scale=(0.02, 0.2), ratio=(0.3, 3.3), value=0.0))
+        train_ops.append(T.RandomErasing(p=0.25, scale=(0.02, 0.2), ratio=(0.3, 3.3), value=0.0))
 
     train_transform = T.Compose(train_ops)
     eval_transform = T.Compose([
@@ -67,10 +61,6 @@ class CIFARCSVDataset(Dataset):
     """
     Custom PyTorch Dataset that links a CSV metadata file (`train_labels.csv` or `test.csv`)
     with a folder of PNG images (`train_images/` or `test_images/`).
-
-    Expected CSV schemas:
-      - Training/Validation (`is_test=False`): columns `id,filename,label`
-      - Competition Test (`is_test=True`):     columns `id,filename`
     """
 
     def __init__(
@@ -126,21 +116,25 @@ class CIFARCSVDataset(Dataset):
 
 def stratified_train_val_split(
     df: pd.DataFrame,
-    val_split: float = 0.1,
+    val_split: float = 0.0,
     seed: int = 2026,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Splits `train_labels.csv` (`id,filename,label`) into stratified training and validation
-    DataFrames preserving exact class proportions across all 10 classes.
+    If `val_split <= 0.0` (Try 5 default), trains on 100% of the data (all 50,000 images)
+    and uses a 2,500-image sample with clean transforms for fast checkpoint validation.
+    Otherwise performs a stratified train/validation split across all 10 classes.
     """
     if val_split <= 0.0:
-        return df.reset_index(drop=True), df.reset_index(drop=True)
+        train_df = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+        n_val = min(2500, len(df))
+        val_df = df.sample(n=n_val, random_state=seed).sort_values("id").reset_index(drop=True)
+        return train_df, val_df
 
     rng = np.random.default_rng(seed)
     train_indices = []
     val_indices = []
 
-    for label_val, group in df.groupby("label"):
+    for _, group in df.groupby("label"):
         idx_array = group.index.to_numpy().copy()
         rng.shuffle(idx_array)
         n_val = max(1, int(round(len(idx_array) * val_split)))
@@ -155,19 +149,23 @@ def stratified_train_val_split(
 def build_csv_folder_loaders(
     train_csv: Union[str, Path] = "./train_labels.csv",
     train_img_dir: Union[str, Path] = "./train_images",
-    val_split: float = 0.1,
+    val_split: float = 0.0,
     batch_size: int = 128,
     eval_batch_size: int = 256,
+    enable_autoaugment: bool = True,
     enable_cutout: bool = True,
     seed: int = 2026,
 ) -> Tuple[Dataset, Dataset, DataLoader, DataLoader]:
     """
-    Builds training and validation DataLoaders directly from `train_labels.csv` (`id,filename,label`)
-    and the `train_images/` folder using a stratified validation split.
+    Builds training and validation DataLoaders from `train_labels.csv` (`id,filename,label`)
+    and `train_images/` using CIFAR-10 AutoAugment + Cutout.
     """
     full_df = pd.read_csv(train_csv)
     train_df, val_df = stratified_train_val_split(full_df, val_split=val_split, seed=seed)
-    train_transform, eval_transform = get_cifar10_transforms(enable_cutout=enable_cutout)
+    train_transform, eval_transform = get_cifar10_transforms(
+        enable_autoaugment=enable_autoaugment,
+        enable_cutout=enable_cutout,
+    )
 
     train_set = CIFARCSVDataset(
         data_source=train_df,
@@ -206,29 +204,45 @@ def build_cifar10_WarningFree_loaders(
     data_root: str = "./data",
     batch_size: int = 128,
     eval_batch_size: int = 256,
+    enable_autoaugment: bool = True,
     enable_cutout: bool = True,
     train_csv: Optional[str] = None,
     train_img_dir: Optional[str] = None,
-    val_split: float = 0.1,
+    val_split: float = 0.0,
     seed: int = 2026,
 ) -> Tuple[Dataset, Dataset, DataLoader, DataLoader]:
     """
-    Builds training and evaluation DataLoaders for CIFAR-10.
-    - First checks if `train_labels.csv` and `train_images/` are provided or exist in
-      the working directory / `data_root`. If found, loads directly from the PNG folder + CSV.
-    - Otherwise falls back cleanly to `torchvision.datasets.CIFAR10`.
+    Automatically locates `train_labels.csv` and `train_00000.png` across explicit CLI paths,
+    `/kaggle/input/`, `./train_images/`, or `/content/`. Falls back to `torchvision` only if
+    no competition files exist.
     """
     root_path = Path(data_root)
-    candidate_csvs = [Path(train_csv)] if train_csv else [Path("./train_labels.csv"), root_path / "train_labels.csv"]
-    candidate_dirs = [Path(train_img_dir)] if train_img_dir else [Path("./train_images"), root_path / "train_images"]
+    candidate_csvs = [Path(train_csv)] if train_csv else []
+    candidate_csvs.extend([
+        Path("./train_labels.csv"),
+        root_path / "train_labels.csv",
+        *[Path(p) for p in glob.glob("/kaggle/input/**/train_labels.csv", recursive=True)],
+        *[Path(p) for p in glob.glob("/content/**/train_labels.csv", recursive=True)],
+    ])
+
+    candidate_dirs = []
+    if train_img_dir and (Path(train_img_dir) / "train_00000.png").exists():
+        candidate_dirs.append(Path(train_img_dir))
+    for p_str in (
+        glob.glob("./**/train_00000.png", recursive=True)
+        + glob.glob("/kaggle/input/**/train_00000.png", recursive=True)
+        + glob.glob("/content/**/train_00000.png", recursive=True)
+    ):
+        candidate_dirs.append(Path(p_str).parent)
 
     resolved_csv = next((p for p in candidate_csvs if p.exists() and p.is_file()), None)
     resolved_dir = next((p for p in candidate_dirs if p.exists() and p.is_dir()), None)
 
     if resolved_csv is not None and resolved_dir is not None:
+        mode_str = "100% full data" if val_split <= 0.0 else f"val_split={val_split:.0%}"
         print(
-            f"[Dataset] Loading custom CIFAR-10 images from '{resolved_dir}' "
-            f"with labels from '{resolved_csv}' (val_split={val_split:.0%})"
+            f"[Dataset] Loading competition images from '{resolved_dir}' "
+            f"with labels from '{resolved_csv}' ({mode_str}, AutoAugment={enable_autoaugment})"
         )
         return build_csv_folder_loaders(
             train_csv=resolved_csv,
@@ -236,12 +250,16 @@ def build_cifar10_WarningFree_loaders(
             val_split=val_split,
             batch_size=batch_size,
             eval_batch_size=eval_batch_size,
+            enable_autoaugment=enable_autoaugment,
             enable_cutout=enable_cutout,
             seed=seed,
         )
 
-    print(f"[Dataset] Custom 'train_images/' folder not found; using torchvision CIFAR-10 in '{data_root}'")
-    train_transform, eval_transform = get_cifar10_transforms(enable_cutout=enable_cutout)
+    print(f"[Dataset] Competition 'train_images/' not found; using torchvision CIFAR-10 in '{data_root}'")
+    train_transform, eval_transform = get_cifar10_transforms(
+        enable_autoaugment=enable_autoaugment,
+        enable_cutout=enable_cutout,
+    )
 
     train_set = torchvision.datasets.CIFAR10(
         root=data_root, train=True, download=True, transform=train_transform
@@ -279,7 +297,7 @@ def build_kaggle_test_loader(
     Builds an evaluation DataLoader for the unlabeled competition `test_images/` folder
     and `test.csv` (`id,filename`).
     """
-    _, eval_transform = get_cifar10_transforms(enable_cutout=False)
+    _, eval_transform = get_cifar10_transforms(enable_autoaugment=False, enable_cutout=False)
     test_dataset = CIFARCSVDataset(
         data_source=test_csv,
         img_dir=test_img_dir,
@@ -304,18 +322,15 @@ def load_kaggle_evaluation_tensors(
     test_csv_path: Optional[str] = "./test.csv",
 ) -> Tuple[List[int], torch.Tensor]:
     """
-    Loads unlabeled evaluation images for the Kaggle competition from either:
-      1. A folder of PNG images (`test_images/`) paired with `test.csv` (`id,filename`), OR
-      2. A serialized tensor/array file (`.pkl`, `.npy`, `.npz`, `.pt`).
-    Aligns image IDs with `test.csv` / `sample_submission.csv` (`id,label`).
+    Loads unlabeled evaluation images for the Kaggle competition from either a folder of PNGs
+    (`test_images/`) paired with `test.csv` (`id,filename`), or a serialized file (`.pkl`, `.npy`, `.npz`, `.pt`).
     """
     path = Path(test_data_path)
     if not path.exists():
         raise FileNotFoundError(f"Evaluation path not found: {path}")
 
-    _, eval_transform = get_cifar10_transforms(enable_cutout=False)
+    _, eval_transform = get_cifar10_transforms(enable_autoaugment=False, enable_cutout=False)
 
-    # Case 1: `test_data_path` is a directory of PNG images (`test_images/`) or `test.csv`
     if path.is_dir() or path.suffix.lower() == ".csv":
         if path.is_dir():
             img_dir = path
@@ -343,7 +358,6 @@ def load_kaggle_evaluation_tensors(
                 tensors_list.append(img_tensor)
             return ids, torch.stack(tensors_list)
         else:
-            # Fallback: sort PNG files in `test_images/` by numeric ID
             png_files = sorted(img_dir.glob("*.png"))
             if not png_files:
                 raise FileNotFoundError(f"No .png images found in {img_dir}")
@@ -353,7 +367,6 @@ def load_kaggle_evaluation_tensors(
             ]
             return ids, torch.stack(tensors_list)
 
-    # Case 2: Single-file tensor/array archive (.pkl, .npy, .npz, .pt)
     if path.suffix in {".pkl", ".pickle"}:
         with path.open("rb") as f:
             payload = pickle.load(f, encoding="bytes")
