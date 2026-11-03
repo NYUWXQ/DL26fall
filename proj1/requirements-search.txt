@@ -1,2 +1,0 @@
--r requirements.txt
-optuna==5.0.0

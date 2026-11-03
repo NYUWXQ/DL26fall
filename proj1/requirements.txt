@@ -1,7 +1,7 @@
---extra-index-url https://download.pytorch.org/whl/cu124
-torch==2.6.0+cu124
-torchvision==0.21.0+cu124
-numpy==2.4.6
-Pillow
-requests
-kaggle==2.2.5
+torch>=2.1.0
+torchvision>=0.16.0
+torchsummary>=1.5.1
+numpy>=1.24.0
+pandas>=2.0.0
+Pillow>=10.0.0
+matplotlib>=3.7.0

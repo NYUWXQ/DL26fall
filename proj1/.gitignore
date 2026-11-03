@@ -1,6 +1,22 @@
-data/
-runs/
+# Byte-compiled / cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
 .ipynb_checkpoints/
-kaggle.json
+
+# Datasets, Image Folders & Checkpoints
+data/
+train_images/
+test_images/
+outputs/
+checkpoints/
+*.pth
+*.pt
+*.pkl
+*.npy
+*.npz
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
