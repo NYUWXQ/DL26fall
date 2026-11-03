@@ -153,8 +153,9 @@ Two measured findings contradict the defaults this report's earlier drafts (and 
 
 The assignment's wording is *"the total number of trainable parameters does not exceed
 5 million"*, with the suggested check being `torchsummary.summary` on *"your model"*.
-Read literally, an ensemble of twelve 4.78M-parameter members carries ~57M trainable
-parameters and would breach the cap, even though every member individually satisfies it.
+Read literally, an ensemble of twelve members (each between 4.33M and 4.78M parameters)
+carries between 52 and 57M trainable parameters and would breach the cap by more than a
+factor of ten, even though every member individually satisfies it.
 The PDF explicitly permits teacher-student distillation and quantization, and says nothing
 about ensembles.
 
@@ -181,9 +182,9 @@ competition's own returns, not local estimates.
 | KD (300-ep teacher) | single, compliant | IID 97.47 | 0.888 |
 | E4 + E5 two seeds | 2-model ensemble, ablation | n/a | 0.886 |
 | KD four seeds | 4-model ensemble, ablation | IID 97.47 | 0.891 |
-| Three-family blend (KD4 + WRN + preact22x4) | 9-model ensemble, ablation | — | 0.894 |
-| Four-family pure blend (12 models) | 12-model ensemble, ablation | — | **0.903** |
-| Four-family blend + external hard-label votes, k=4 / k=2 | 12 models + another team member's model, ablation | — | 0.901 |
+| Six distinct networks: KD4 counted three times + two local runs | weighted blend, ablation | — | 0.894 |
+| Twelve equal-weight members (4 WRN-22 + 8 WRN-16) | 12-model ensemble, ablation | — | **0.903** |
+| Same twelve + external hard-label votes, k=4 / k=2 | 12 models + another team member's model, ablation | — | 0.901 |
 
 The right-hand block is the honest accounting: only the first five rows are configurations
 that satisfy a literal reading of the 5M cap. Everything from row six down is an ablation
@@ -197,9 +198,12 @@ Three conclusions survived measurement:
    0.885 to 0.888 (+0.3) once a 600-epoch teacher supervised it, whereas a weak
    (300-epoch) teacher produced 97.24% IID, indistinguishable from the 97.22% plain
    baseline — so the gain depends on teacher quality, not on KD existing.
-3. **Architecture diversity is the strongest measured lever.** A four-seed ensemble of
-   one family bought +0.3 (0.888 to 0.891); adding a different architecture family
-   bought another +0.3 (0.891 to 0.894). Same-family seeds are too correlated.
+3. **Ensemble breadth is the strongest measured lever, and it is expensive.** Four seeds
+   of the distilled model reached 0.891 (+0.3 over the best member); a weighted blend of
+   six distinct networks reached 0.894; twelve equal-weight members reached 0.903. We
+   corrected an earlier misreading of that last step: the twelve members span only three
+   architecture/recipe variants, so the gain came from more members *within* those variants,
+   not from a fourth family. Model soup never beat the best member.
 
 Negative results we keep in the record: 10-view TTA is worse than flip; greedy weight
 soup collapsed to a single member every time (no benefit from weight averaging); a
@@ -213,18 +217,22 @@ implementations of the same configuration.
 
 ### 5.6 Ablation: architecture families and equal-weight fusion
 
-Given that diversity and not length is the lever, the build order became: KD family
-(4 seeds), plain 600-epoch WRN family (4 seeds), preact22x4 family (4 seeds), and the
-teammates' SE-ResNet-164/RICAP (2.49M parameters, their measured 98.10% holdout
-accuracy), trained from their published recipe on the same course allocation so that
-its test-set probabilities can join the fusion. Fusion is equal-weight voting; no local
-weighting is used, because the only local signals available are either polluted by
-full-data training or empirically uncorrelated with the leaderboard.
+Given that breadth and not length is the lever, the build order became: KD family
+(4 seeds), plain 600-epoch WRN family (4 seeds), and preact22x4 family (4 seeds). Those
+twelve are the members of the 0.903 blend, and we verified that by exhaustive search over
+the stored probability matrices: of all twelve-member combinations, exactly one reproduces
+all 2,000 published labels row for row. The SE-ResNet probabilities our own pipelines
+produced were *never* part of a submitted fusion, so we do not claim they were. Fusion is
+equal-weight probability averaging; no local weighting is used, because the only local
+signals available are either polluted by full-data training or empirically uncorrelated
+with the leaderboard.
 
-Constantly attributed contribution: the 0.906 leaderboard entry is the teammates'
-line (600 epochs plus KD T=2/alpha=0.75). Our measured contribution is the audited
-reproduction (0.885 vs 0.888), the negative results above, and the fusion that reached
-0.894 from twelve models across three families.
+Clearly attributed contribution: the 0.906 leaderboard entry is the teammates' line
+(600 epochs plus KD T=2/alpha=0.75). Our measured contribution is the audited reproduction
+(0.885 vs 0.888), the negative results above, and the three-variant fusion that reached 0.903.
+That an ensemble of roughly 55M parameters ties a single 2.49M model from the teammates'
+line (0.903 on the same leaderboard) is the strongest evidence for keeping the compliant
+single model as the deliverable.
 
 ### 5.7 Compliance audit
 
