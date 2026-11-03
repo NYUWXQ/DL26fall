@@ -90,6 +90,20 @@ def build_model(name: str = "preact16x4", num_classes: int = 10, drop: float = 0
     """Factory by name. Names encode depth x width, e.g. preact16x4.
     按名称构建模型，名称编码 深度x宽度，如 preact16x4。"""
     import re
+    # DenseNet-BC family: densenet<L>x<k>, e.g. densenet100x12 (L=100, k=12).
+    # DenseNet-BC 族：densenet<L>x<k>，例如 densenet100x12（L=100, k=12）。
+    dm = re.fullmatch(r"densenet(\d+)x(\d+)", name)
+    if dm:
+        from densenet import DenseNetBC
+        depth, growth = int(dm.group(1)), int(dm.group(2))
+        # L = 3 blocks * n layers * 2 convs is not exact; the standard DenseNet-BC
+        # naming uses (L-4) conv layers over three equal blocks.
+        # DenseNet-BC 的标准命名把 (L-4) 个卷积层均分到三个 block。
+        n_layers = (depth - 4) // 6
+        if depth != 6 * n_layers + 4:
+            raise ValueError(f"densenet depth must be 6n+4, got {depth}")
+        return DenseNetBC(layers=(n_layers, n_layers, n_layers), growth=growth,
+                          num_classes=num_classes, drop=drop)
     m = re.fullmatch(r"preact(\d+)x([\d.]+)", name)
     if not m:
         raise ValueError("unknown model name: %s" % name)

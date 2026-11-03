@@ -129,7 +129,7 @@ The 6.9-point val→LB drop is the single most consequential number in this proj
 
 **Interim evidence, superseded by Section 5.1's verdict (kept for the record).** The confidence-profile comparison that first suggested a shift — val n=2500: mean confidence 0.6511, entropy 1.217, balanced predicted-class mass; test n=2000: mean confidence 0.6031 (−4.8 points), entropy 1.310, visibly skewed predicted-class mass — plus the pixel statistics (+4.4/255 brightness, ~5% higher contrast) motivated the controlled experiment in Section 5.1. That experiment then showed these deltas cost at most ±0.2 points, and the pixel-id comparisons showed the test pool is re-collected rather than transformed. We keep this paragraph because the diagnostic chain (confidence gap → pixel statistics → controlled transform experiment → pixel-id comparison) is how the hypothesis was actually tested and killed.
 
-### 5.2 Leaderboard-measured results and the counter-default findings
+### 5.3 Leaderboard-measured results and the counter-default findings
 
 All leaderboard numbers below are Kaggle public-LB returns verbatim; holdout validations are from `runs/*/history.json` or `analysis/refine.md`.
 
@@ -146,25 +146,48 @@ All leaderboard numbers below are Kaggle public-LB returns verbatim; holdout val
 
 Two measured findings contradict the defaults this report's earlier drafts (and the literature's usual claims) led us to expect:
 
-- **10-view TTA < flip TTA**: more views translated (0.879 → 0.873, −0.6 points). On a re-collected test pool whose statistics differ from CIFAR-10 train (Section 5.1), the extra shifted crops sample pixels the original model never saw statistics for — consistent with the OOD BN analysis showing test-statistics BN actively *hurts* (Section 5.4-caveat and `analysis/refine.md`).
+- **10-view TTA < flip TTA**: more views translated (0.879 → 0.873, −0.6 points). On a re-collected test pool whose statistics differ from CIFAR-10 train (Section 5.1), the extra shifted crops sample pixels the original model never saw statistics for — consistent with the OOD BN analysis showing test-statistics BN actively *hurts* (Section 5.7 caveat and `analysis/refine.md`).
 - **Two-seed ensembling buys +0.1 points, not +1–2**: 0.885 → 0.886. "Ensembles gain more on OOD than IID" is what we expected from the literature; on this specific re-collected 2,000-image pool it measured almost zero. We report the conflict as our own data, not a rebuttal of the literature whose regime differs (CIFAR-10.1 vs a possibly even harder in-competition collection).
 
-### 5.3 What actually moved the metric
+### 5.4 Parameter-cap compliance: why the headline is a single model
+
+The assignment's wording is *"the total number of trainable parameters does not exceed
+5 million"*, with the suggested check being `torchsummary.summary` on *"your model"*.
+Read literally, an ensemble of twelve 4.78M-parameter members carries ~57M trainable
+parameters and would breach the cap, even though every member individually satisfies it.
+The PDF explicitly permits teacher-student distillation and quantization, and says nothing
+about ensembles.
+
+We therefore draw the line conservatively and state it: **our compliant deliverable is a
+single architecture under 5M parameters.** Ensembling results appear below as an ablation
+*only* — they are reported with this caveat rather than silently presented as our model.
+Trading a 1-2 point leaderboard bonus against the 20 report/codebase points would be a bad
+trade, and an undisclosed ensemble would misrepresent the parameter count the report is
+required to print.
+
+### 5.5 What actually moved the metric
+
+
 
 Every configuration below was submitted to the public leaderboard; the scores are the
 competition's own returns, not local estimates.
 
-| Configuration | Local signal | Public LB |
-| --- | --- | --- |
-| E1 preact22x4, 300 ep, 47.5k | val 97.00 (flip) | 0.879 |
-| E1 + 10-view TTA | val 96.76 | 0.873 |
-| E4 faithful recipe, 300 ep, full 50k | n/a (full-data) | 0.885 |
-| E4 + E5 two-seed ensemble | n/a | 0.886 |
-| 1200 ep, full 50k | IID 97.46 | 0.884 |
-| KD (300-ep teacher), single | IID 97.47 | 0.888 |
-| KD (600-ep teacher), 4-seed ensemble | IID 97.47 | 0.891 |
-| Cross-architecture blend (KD4 + WRN600 + preact22x4) | — | **0.894** |
-| Teammate SE-ResNet-164/RICAP (their line) | val 98.10 | (team best 0.906 on their KD run) |
+| Configuration | Kind | Local signal | Public LB |
+| --- | --- | --- | --- |
+| E1 preact22x4 300 ep, 47.5k | single, compliant | val 97.00 (flip) | 0.879 |
+| E1 + 10-view TTA | single, compliant | val 96.76 | 0.873 |
+| E4 faithful recipe 300 ep, full 50k | single, compliant | n/a (full-data) | 0.885 |
+| 1200 ep, full 50k | single, compliant | IID 97.46 | 0.884 |
+| KD (300-ep teacher) | single, compliant | IID 97.47 | 0.888 |
+| E4 + E5 two seeds | 2-model ensemble, ablation | n/a | 0.886 |
+| KD four seeds | 4-model ensemble, ablation | IID 97.47 | 0.891 |
+| Three-family blend (KD4 + WRN + preact22x4) | 9-model ensemble, ablation | — | 0.894 |
+| Four-family pure blend (12 models) | 12-model ensemble, ablation | — | **0.903** |
+| Four-family blend + external hard-label votes, k=4 / k=2 | 12 models + another team member's model, ablation | — | 0.901 |
+
+The right-hand block is the honest accounting: only the first five rows are configurations
+that satisfy a literal reading of the 5M cap. Everything from row six down is an ablation
+whose members are each under the cap but whose total trainable parameters are not.
 
 Three conclusions survived measurement:
 
@@ -188,7 +211,7 @@ Our reproduction check stands: E4 at 0.885 against the teammates' contemporaneou
 plain-WRN baseline at 0.888 is a three-thousandths gap, the variance band of two honest
 implementations of the same configuration.
 
-### 5.4 Consequence: five architecture families, equal-weight fusion
+### 5.6 Ablation: architecture families and equal-weight fusion
 
 Given that diversity and not length is the lever, the build order became: KD family
 (4 seeds), plain 600-epoch WRN family (4 seeds), preact22x4 family (4 seeds), and the
@@ -203,7 +226,7 @@ line (600 epochs plus KD T=2/alpha=0.75). Our measured contribution is the audit
 reproduction (0.885 vs 0.888), the negative results above, and the fusion that reached
 0.894 from twelve models across three families.
 
-### 5.4 Compliance audit
+### 5.7 Compliance audit
 
 The assignment forbids pretrained weights, external datasets, and >5M parameters. We enforce this with both code and grep: `check_budget()` guards every model construction, submission-time loaders re-derive the parameter count from the loaded state dict, and `scripts/check_deliverables.py` re-runs a clean-checkout pass that greps `src/` for `pretrained=|from_pretrained|torch.hub` and validates CSV row alignment/shape (2,000 predictions, ids matching `sample_submission.csv` order).
 
@@ -213,7 +236,7 @@ The same pipeline runs on NYU Torch HPC via `slurm/train.sbatch` + `notebooks/hp
 
 ## 7. Discussion and Conclusions
 
-**What the numbers say (verified only).** The architecture-budget table (Section 3.2), the completed 300-epoch trajectory (Section 4.1), the pixel-id verdict and controlled-transform table (Section 5.1), and the leaderboard-measured comparison with its two counter-default findings (Section 5.2) are all reproducible from commands and files this report names.
+**What the numbers say (verified only).** The architecture-budget table (Section 3.2), the completed 300-epoch trajectory (Section 4.1), the pixel-id verdict and controlled-transform table (Section 5.1), and the leaderboard-measured comparison with its two counter-default findings (Section 5.3) are all reproducible from commands and files this report names.
 
 **What we learned, in one line each.** (1) The recipe consistent with the contemporaneous baseline (0.885 vs 0.888) took one iteration with six named changes — the hard one was full-50k training, not augmentation. (2) Inference-time complexity is a *negative* knob on this test pool: 10-view TTA lost 0.6 points to plain flip. (3) Two-seed ensembling bought +0.1 and no more; diversity did not pay on this collection the way the literature led us to expect. (4) The remaining 2 points to 0.906 tug-of-war is *length + distillation*, per the teammates' openly posted configuration — our 600-epoch × 4-seed queue is the direct experiment, with KD implemented and smoke-tested behind it.
 
