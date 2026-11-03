@@ -244,6 +244,42 @@ The same pipeline runs on NYU Torch HPC via `slurm/train.sbatch` + `notebooks/hp
 
 **Takeaways for the reader.** Under a hard parameter cap on a re-collected test pool, the levers that actually moved the metric were data volume (full 50k) and recipe alignment; the levers that did *not* were more TTA views and confederate ensembling. And when local scores drop on a leaderboard, the most valuable engineering artifact is not a better model — it is the diagnostic chain that locates *why*: pixel-id comparisons and a controlled transform experiment replaced a plausible (and wrong) attribution with a plain one. The gap is data difficulty; the response is length and distillation, not domain matching.
 
+## 7. Reproducibility artefacts and the executed notebook
+
+The submission includes `notebooks/results.ipynb`, executed end to end with its outputs
+retained, because the assignment asks for notebooks that show code execution and print the
+final test accuracy together with the parameter count. It loads the trained checkpoint,
+prints the budget check, measures accuracy on the labelled CIFAR-10 test split, and plots
+the confusion matrix and the training curves.
+
+Printed by that notebook (not transcribed):
+
+```
+architecture          : preact22x4
+checkpoint            : runs/arch_preact22x4_s0/final.pt  (epochs=600, full_data=True)
+PARAMETERS            : 4,326,986
+parameter budget      : 5,000,000  -> PASS
+ACCURACY (plain)      : 0.9732  (9732/10000)
+ACCURACY (flip TTA)   : 0.9750  (9750/10000)
+```
+
+So the representative compliant model in this report is a pre-activation wide ResNet with
+**4,326,986 trainable parameters** and **0.9750 accuracy** on the 10,000-image official
+CIFAR-10 test split with horizontal-flip TTA. The per-class recalls range from 0.932 (cat,
+the hardest class) to 0.992 (automobile).
+
+Two limits are stated rather than hidden. First, the competition's 2,000 test labels are
+hidden, so the leaderboard number and the labelled-split accuracy are different measurements
+of different data; both are reported. Second, the 600-epoch run trains on all 50,000 images,
+so it has no held-out split of its own; the held-out validation curve in the notebook belongs
+to the earlier 300-epoch run on a 47,500/2,500 split and is labelled as such.
+
+Reproduction entry points: `python src/train.py --help` for training, `src/predict.py` for
+TTA/ensemble inference, `scripts/build_report_pdf.py` for this PDF, `scripts/fuse_probs.py`
+for the probability fusion used in the ablations, and `slurm/*.sbatch` for the cluster runs.
+Constraint checks are programmatic: `check_budget()` refuses any model above 5,000,000
+parameters and every cluster submission script re-runs that guard before spending GPU hours.
+
 ## References
 
 1. Zagoruyko, S., & Komodakis, N. (2016). *Wide Residual Networks*. BMVC.
