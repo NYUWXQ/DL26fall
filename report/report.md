@@ -1,3 +1,9 @@
+> **Superseded — kept as a design record.** The submitted report is
+> [`report/latex/main.tex`](latex/main.tex) (compiled on Overleaf, 5 pages). This Markdown draft
+> predates the final numbers and the corrected ensemble composition; where the two disagree, the
+> LaTeX source wins. Current audited facts: `docs/REPORT_FACTS.md`.
+> **已失效，仅作过程记录。** 提交版是 `report/latex/main.tex`；本文与最终数字不一致处以 LaTeX 为准。
+
 # From-Scratch Wide ResNets Under a 5M Parameter Cap: A Study on the CIFAR-10 Variant Challenge
 
 **Team:** Bonnie Chen, Xinquan Wang, Qinghao Shen · **NYU DL 26 Fall, Project 1**
