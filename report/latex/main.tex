@@ -176,9 +176,9 @@ Same, ten-view test-time augmentation & single, compliant & val 0.9676 & 0.873 \
 Faithful recipe, 300 ep, full 50k & single, compliant & --- & 0.885 \\
 Faithful recipe, 1200 ep, full 50k & single, compliant & official test 0.9746 & 0.884 \\
 Distillation, 300-epoch teacher & single, compliant & official test 0.9747 & 0.888 \\
-SE-164, 600 ep, seed 0 & single, compliant & --- & 0.894 \\
-SE-164, 600 ep, seed 1 & single, compliant & --- & 0.899 \\
-SE-164, two-seed average & 2 models, 4{,}976{,}756 summed & --- & \textbf{0.902} \\
+SE-164, 600 ep, run 1 & single, compliant & --- & 0.894 \\
+SE-164, 600 ep, run 2 & single, compliant & --- & 0.899 \\
+SE-164, two-run average & 2 models, 4{,}976{,}756 summed & --- & \textbf{0.902} \\
 \midrule
 Two seeds, faithful recipe & 2-model ensemble, ablation & --- & 0.886 \\
 Distillation, four seeds & 4-model ensemble, ablation & official test 0.9747 & 0.891 \\
@@ -188,7 +188,7 @@ Same twelve plus another member's hard-label votes & 12 models + external votes,
 \bottomrule
 \end{tabular}
 \caption{Public leaderboard returns for every submitted configuration. Rows above the rule
-satisfy the literal parameter cap --- including the two-seed average, whose \emph{summed}
+satisfy the literal parameter cap --- including the two-run average, whose \emph{summed}
 trainable parameters are 4{,}976{,}756 and therefore still under five million; we label that
 reading explicitly rather than presenting it as a single model. Rows below the rule are
 ensembles whose summed parameters exceed the cap and are reported as ablations
@@ -201,15 +201,18 @@ configuration is a three-thousandths gap, the variance band of two honest implem
 
 The architecture line, not our recipe tuning, moved the ceiling. Swapping the wide residual
 network for the team's SE-ResNet-164 configuration at 2{,}488{,}378 parameters --- trained by us,
-under our own recipe, for 600 epochs --- returned 0.894 and 0.899 over two seeds: +0.6 to +1.1
-points over our best wide-ResNet single model, which had twice the parameters. The two seeds
-disagree on 123 of the 2{,}000 test rows and on 0.5 leaderboard points, which fixes the noise
-band for this competition: differences below half a point are not signal.
+under our own recipe, for 600 epochs --- returned 0.894 and 0.899 over two independent runs: +0.6 to +1.1
+points over our best wide-ResNet single model, which had twice the parameters. The trainer pins
+its torch seed, so these are run-to-run differences produced by non-deterministic kernels on
+different nodes rather than a seed sweep --- and run-to-run variance is the quantity that matters
+when deciding whether a leaderboard gap is real. The two runs disagree on 123 of the 2{,}000 test
+rows and on 0.5 leaderboard points, which fixes the noise band for this competition: differences
+below half a point are not signal.
 
 Averaging those two networks returns 0.902 while their \emph{summed} trainable parameters are
 4{,}976{,}756, still inside the cap under the literal reading; we label that as a boundary
 reading and name both members. Our recommended deliverable is therefore the single SE-ResNet at
-0.899, and the two-seed average at 0.902 is the best number we can report while every reading of
+0.899, and the two-run average at 0.902 is the best number we can report while every reading of
 the cap is respected. It ties our twelve-member, fifty-odd-million-parameter ensemble (0.903)
 within the noise band, at about one eleventh of the parameter count. The representative model
 measured in the notebook is the WRN-22 of Table~\ref{tab:budget}.
