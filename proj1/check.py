@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 from model import WideResNet
-from train import atomic_save, mix_batch, split_indices
+from train import atomic_save, distillation_loss, mix_batch, split_indices, validate_teacher
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from run import select_result
@@ -26,6 +26,34 @@ def main():
         raise AssertionError('Oversized model was accepted')
     except ValueError:
         pass
+    teacher = WideResNet(28, 64, teacher=True)
+    assert sum(p.numel() for p in teacher.parameters()) > 5_000_000
+    student_logits = torch.randn(4, 10, requires_grad=True)
+    teacher_logits = torch.randn(4, 10, requires_grad=True)
+    loss = distillation_loss(student_logits, teacher_logits, 4)
+    assert loss.isfinite() and loss >= 0
+    loss.backward()
+    assert student_logits.grad is not None and torch.isfinite(student_logits.grad).all()
+    assert teacher_logits.grad is None
+    assert abs(distillation_loss(student_logits, student_logits, 4).item()) < 1e-5
+    config = {'training_data': 'CIFAR-10 official train split', 'full_data': False, 'split_sha256': 'split'}
+    validate_teacher(config, config)
+    for change in ({'full_data': True}, {'split_sha256': 'different'}, {'max_batches': 1}):
+        try:
+            validate_teacher(config | change, config)
+            raise AssertionError('Invalid teacher accepted')
+        except ValueError:
+            pass
+    for options in (
+        {'stage_widths': [48, 96, 192], 'stage_blocks': [1, 3, 4]},
+        {'stage_widths': [64, 128, 256], 'stage_blocks': [2, 3, 3], 'groups': 4},
+    ):
+        model = WideResNet(**options)
+        assert sum(p.numel() for p in model.parameters()) <= 5_000_000
+        output = model(torch.randn(2, 3, 32, 32))
+        assert output.shape == (2, 10)
+        output.square().mean().backward()
+        assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())
     targets = np.repeat(np.arange(10), 5000)
     train, val = split_indices(targets)
     assert len(train) == 45000 and len(val) == 5000
