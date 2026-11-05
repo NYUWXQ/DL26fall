@@ -15,6 +15,8 @@ CIFAR-10 变体竞赛：从零训练残差网络，参数量 ≤5M，禁用预�
 | How to build it | [`report/latex/README.md`](report/latex/README.md) |
 | Executed notebook (required evidence) | [`notebooks/results.ipynb`](notebooks/results.ipynb) — loads a checkpoint, prints **4,326,986** trainable parameters, measures **0.9750** on the 10,000 labelled CIFAR-10 test images (0.9732 plain), plots the confusion matrix and training curves |
 | Every claim and its provenance | [`docs/REPORT_FACTS.md`](docs/REPORT_FACTS.md) — including the corrections we made to earlier drafts |
+| Rules for editing the report (page budget, frozen numbers, withdrawn claims) | [`docs/REPORT_HANDOFF.md`](docs/REPORT_HANDOFF.md) |
+| One-page reproduce guide | [`REPRODUCE.md`](REPRODUCE.md) |
 | HPC runbook | [`docs/HPC.md`](docs/HPC.md) |
 
 The submitted PDF is produced from `report/latex/` on Overleaf (pdflatex + bibtex, twice). The older
