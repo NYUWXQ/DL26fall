@@ -36,6 +36,8 @@ single member as printed by `python src/models.py`; the `Log` column is the raw 
 | Distilled from a 600-epoch teacher | single, compliant | 4,780,366 | 0.888 | `kd_s11_single.csv` | `log_20261101_190210` |
 | SE-ResNet-164 w=16, 600 ep, run 1 | single, compliant | 2,488,378 | 0.894 | `se_s0_single.csv` | `log_20261103_190208` |
 | SE-ResNet-164 w=16, 600 ep, run 2 | single, compliant | 2,488,378 | 0.899 | `se_s1_single.csv` | `log_20261103_190208` |
+| SE-ResNet-164 **w=22**, 600 ep, run 1 | single, compliant | 4,684,888 | **0.902** | `se_w22_s0_single.csv` | `log_20261104_210025` |
+| SE-ResNet-164 **w=22**, 600 ep, run 2 | single, compliant | 4,684,888 | 0.896 | `se_w22_s1_single.csv` | `log_20261104_210025` |
 | Two-run average of the two lines above | 2 models, **summed 4,976,756** (boundary reading) | — | **0.902** | `se_s0s1_avg2.csv` | `log_20261103_190208` |
 | Two runs of the faithful recipe | 2-model ensemble, ablation | — | 0.886 | `ens2_e4e5.csv` | `log_20261101_190203` |
 | Four distillation runs | 4-model ensemble, ablation | — | 0.891 | `ens_kd600_4.csv` | `log_20261101_190210` |

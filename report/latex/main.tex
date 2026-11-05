@@ -42,7 +42,7 @@ cap of five million trainable parameters, and we report what actually moved the 
 hidden test set. Starting from an independently reproduced recipe that scored 0.885 on the
 public leaderboard, we measure five configuration families across sixty-odd GPU hours on a
 course cluster and reach 0.903 with a twelve-member ensemble, 0.902 with a two-network average
-whose summed parameter count stays inside the cap, and 0.899 with our best \emph{single}
+whose summed parameter count stays inside the cap, and 0.902 with our best \emph{single}
 compliant model. Four positive findings survive measurement: horizontal-flip test-time
 augmentation helps and additional views hurt; knowledge distillation helps only when the
 teacher is stronger than the student; member diversity across architecture variants is worth
@@ -176,8 +176,10 @@ Same, ten-view test-time augmentation & single, compliant & val 0.9676 & 0.873 \
 Faithful recipe, 300 ep, full 50k & single, compliant & --- & 0.885 \\
 Faithful recipe, 1200 ep, full 50k & single, compliant & official test 0.9746 & 0.884 \\
 Distillation, 300-epoch teacher & single, compliant & official test 0.9747 & 0.888 \\
-SE-164, 600 ep, run 1 & single, compliant & --- & 0.894 \\
-SE-164, 600 ep, run 2 & single, compliant & --- & 0.899 \\
+SE-164, 600 ep, $w{=}16$, run 1 & single, compliant & --- & 0.894 \\
+SE-164, 600 ep, $w{=}16$, run 2 & single, compliant & --- & 0.899 \\
+SE-164, 600 ep, $w{=}22$, run 1 & single, compliant & --- & \textbf{0.902} \\
+SE-164, 600 ep, $w{=}22$, run 2 & single, compliant & --- & 0.896 \\
 SE-164, two-run average & 2 models, 4{,}976{,}756 summed & --- & \textbf{0.902} \\
 \midrule
 Two seeds, faithful recipe & 2-model ensemble, ablation & --- & 0.886 \\
@@ -209,6 +211,14 @@ when deciding whether a leaderboard gap is real. The two runs disagree on 123 of
 rows and on 0.5 leaderboard points, which fixes the noise band for this competition: differences
 below half a point are not signal.
 
+That band turns out to be wide enough to swallow the two things we expected to matter most. We
+then spent the same recipe and the same 600 epochs on a width-22 SE network --- 4{,}684{,}888
+parameters, 94\% of the cap --- which cost the same wall-clock per epoch as the width-16 model
+(58 versus 59 seconds, so the comparison is compute-matched as well). It returned 0.902 and
+0.896: a mean of +0.25 points over the width-16 pair, with the two width-22 runs spread over 0.6
+points. Widening by 88\% in parameters bought nothing measurable, and the best single compliant
+number we report, 0.902, came from that run rather than from a systematic gain.
+
 Averaging those two networks returns 0.902 while their \emph{summed} trainable parameters are
 4{,}976{,}756, still inside the cap under the literal reading; we label that as a boundary
 reading and name both members. Our recommended deliverable is therefore the single SE-ResNet at
@@ -239,14 +249,17 @@ still span only three architecture/recipe variants, so the gain came from adding
 averaging (a model soup) never improved on the best member and collapsed to a single model in
 every greedy run we tried.
 
-\paragraph{An architecture swap beat all of our recipe work.} The largest improvement we made to
-a compliant \emph{single} model came from adopting a different architecture rather than from
-augmentation, schedules or distillation: 2.49M SE-ResNet at 0.894--0.899 against 4.78M
-wide-ResNet at 0.888. The comparison with the team's own SE line (0.905, width 22, RICAP
-augmentation, 1{,}800 epochs) is confounded on three axes at once --- width, augmentation and
-training length all differ --- so we do not attribute the remaining 0.6--1.1 points to epochs
-alone. We record it as an observation with its confounds attached, which is the most we can
-honestly claim from one comparison.
+\paragraph{An architecture swap moved the ceiling; widening it and training it longer did not.}
+The largest improvement we made to a compliant \emph{single} model came from adopting a different
+architecture rather than from augmentation, schedules or distillation: 2.49M SE-ResNet at
+0.894--0.899 against 4.78M wide-ResNet at 0.888. We then closed the width confound directly ---
+same recipe, same 600 epochs, 4.69M parameters in place of 2.49M --- and the mean gain was +0.25
+points inside a run-to-run band of half a point, i.e.\ not measurable. The team's own SE line
+(0.903 and 0.905 at width 22 with RICAP augmentation and 1{,}800 epochs) sits 0.1--0.3 above our
+best 600-epoch run, also inside that band, so we do not attribute the residual difference to
+epochs or augmentation either. What we can say is narrower and more useful: changing the family
+moved the score, while spending the rest of the parameter budget, or three times the training
+time, did not.
 
 \paragraph{Negative results.} Ten-view test-time augmentation (four shifted crops with
 horizontal flips) scored 0.873 against 0.879 for flips alone; additional views hurt on a test
@@ -336,10 +349,11 @@ run.
 Under a five-million parameter cap, on a re-collected CIFAR-10 variant, the reproducible levers
 were architecture choice, member diversity and a stronger teacher for distillation, not longer
 training.
-Our compliant single model reaches 0.899 on the public leaderboard with 2.5M parameters, two such
-networks averaged stay inside the cap at 0.902, and a
+Our compliant single model reaches 0.902 on the public leaderboard with 4.69M parameters, the
+two-run average of a 2.49M model also reaches 0.902 inside the cap, and a
 twelve-model ensemble reaches 0.903 but is reported only as an ablation because a
-literal reading of the cap forbids it. We flag the same limit for the leaderboard's perfect
+literal reading of the cap forbids it. Changing the architecture family moved the score; spending
+the remaining parameters and three times the training time did not. We flag the same limit for the leaderboard's perfect
 entry and for the option of importing a better external model, and we treat the inability of
 local metrics to predict the leaderboard as a finding rather than a nuisance.
 
