@@ -55,7 +55,7 @@
 
 | 要求 | 状态 |
 |---|---|
-| 报告 ≤8 页（含图/表/引用） | 当前 **5 页**（Overleaf AAAI 双栏，含 1 张跨栏图） |
+| 报告 ≤8 页（含图/表/引用） | 当前 **6 页**（Overleaf AAAI 双栏，含 1 张跨栏图） |
 | 第一页放公开 GitHub 链接 | 已有链接；**仓库必须改成 public**（当前 private，待办） |
 | 打印最终测试精度与参数量 | `notebooks/results.ipynb` 已执行并打印 |
 | 含执行输出的 notebook + 图 | `notebooks/results.ipynb`（0 错误、2 张内嵌图） |

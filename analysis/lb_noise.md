@@ -1,3 +1,10 @@
+> **Superseded in part.** The `LB = (1-p)·a + p/10` label-noise fit below was **withdrawn**: it
+> conflicts with the pixel-level audit (the shipped training images are exactly CIFAR-10; the test
+> images match neither CIFAR-10 test nor CIFAR-10.1 at any dihedral transform). It also audits a
+> 4,000-image sample, whereas the final audit hashed all 50,000 pairs. The current position is in
+> `docs/REPORT_FACTS.md`; keep this file only as a record of the analysis path.
+> **部分失效**：下面的标签噪声拟合已撤回；当前结论以 `docs/REPORT_FACTS.md` 为准。
+
 # Leaderboard saturation and the IID→OOD gap
 
 Status: **measured** (numbers from `analysis/lb_noise.py`, `analysis/refine.py`,

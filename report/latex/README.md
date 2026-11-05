@@ -16,7 +16,7 @@ here, because they ship with the AAAI author kit under its own terms. Drop them 
 pdflatex main && bibtex main && pdflatex main && pdflatex main
 ```
 
-The submitted PDF was produced by the Overleaf project with exactly this source. It is 5 pages;
+The submitted PDF was produced by the Overleaf project with exactly this source. It is 6 pages;
 the assignment's cap is 8 pages including figures, tables and citations.
 
 **Where the numbers come from.** Every leaderboard value in Table 2 traces to a line under

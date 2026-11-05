@@ -174,8 +174,8 @@ Configuration & Kind & Local signal & Public LB \\
 Pre-act.\ WRN-22, initial recipe, 300 ep, 47.5k split & single, compliant & val 0.9700 (flip) & 0.879 \\
 Same, ten-view test-time augmentation & single, compliant & val 0.9676 & 0.873 \\
 Faithful recipe, 300 ep, full 50k & single, compliant & --- & 0.885 \\
-Faithful recipe, 1200 ep, full 50k & single, compliant & official test 0.9746 & 0.884 \\
-Distillation, 300-epoch teacher & single, compliant & official test 0.9747 & 0.888 \\
+Faithful recipe, 1200 ep, full 50k & single, compliant & --- & 0.884 \\
+Distillation, 300-epoch teacher & single, compliant & --- & 0.888 \\
 SE-164, 600 ep, $w{=}16$, run 1 & single, compliant & --- & 0.894 \\
 SE-164, 600 ep, $w{=}16$, run 2 & single, compliant & --- & 0.899 \\
 SE-164, 600 ep, $w{=}22$, run 1 & single, compliant & --- & \textbf{0.902} \\
@@ -183,7 +183,7 @@ SE-164, 600 ep, $w{=}22$, run 2 & single, compliant & --- & 0.896 \\
 SE-164, two-run average & 2 models, 4{,}976{,}756 summed & --- & \textbf{0.902} \\
 \midrule
 Two seeds, faithful recipe & 2-model ensemble, ablation & --- & 0.886 \\
-Distillation, four seeds & 4-model ensemble, ablation & official test 0.9747 & 0.891 \\
+Distillation, four seeds & 4-model ensemble, ablation & --- & 0.891 \\
 Four distilled students, up-weighted, plus two local runs & 6 distinct networks, ablation & --- & 0.894 \\
 4 WRN-22 + 8 WRN-16, equal weight & 12-model ensemble, ablation & --- & \textbf{0.903} \\
 Same twelve plus another member's hard-label votes & 12 models + external votes, ablation & --- & 0.901 \\
@@ -304,8 +304,9 @@ we could not have claimed.
 Two measurements support the same conclusion from the modelling side. Ensembling bought
 between 0.1 and 0.9 leaderboard points depending on family diversity, which is small relative
 to the 20 points of report and codebase credit at stake; and the public leaderboard contains a
-perfect 1.000 entry, which is not attainable from images alone under an irreducible error of
-roughly nine percent, so top-position bonuses are not a meaningful target. We optimise instead
+perfect 1.000 entry, which would require zero errors on a pool where every model we and our
+teammates trained sits near nine percent error, so top-position bonuses are not a meaningful
+target. We optimise instead
 for a defensible, reproducible single-model result.
 
 \section{Reproducibility}
@@ -335,7 +336,10 @@ notebook reports, for the
 pre-activation WRN-22 checkpoint: 4{,}326{,}986 trainable parameters against the
 5{,}000{,}000 cap, and 0.9750 accuracy with horizontal-flip test-time augmentation on the
 10{,}000 labelled images (0.9732 plain), with per-class recall ranging from 0.932 on cats to
-0.992 on automobiles.
+0.992 on automobiles. Only this checkpoint has a retained, re-runnable measurement on the
+labelled split; for the other rows of Table~\ref{tab:lb} the local signals were taken on the
+cluster, whose run logs are not part of the repository, so we leave those cells blank rather than
+cite numbers a reader cannot check.
 
 Two measurement conventions are kept separate throughout. Accuracy on the labelled CIFAR-10
 test split and the leaderboard score on the hidden 2{,}000-image pool are different
