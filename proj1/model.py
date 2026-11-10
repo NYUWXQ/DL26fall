@@ -10,6 +10,12 @@ from torch.nn import functional as F
 def build_model(config):
     options = dict(config)
     architecture = options.pop('architecture', 'wrn')
+    if architecture == 'pyramid':
+        from pyramidnet import PyramidNet
+        return PyramidNet(**options)
+    if architecture == 'star':
+        from starnet import StarNet
+        return StarNet(**options)
     if architecture == 'shake':
         from shakeshake import ShakeShake
         return ShakeShake(**options)

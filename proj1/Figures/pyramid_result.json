@@ -1,0 +1,17 @@
+{
+  "model": {
+    "architecture": "pyramid",
+    "depth": 110,
+    "alpha": 96
+  },
+  "parameters": 4804512,
+  "training_images": 40000,
+  "validation_images": 10000,
+  "validation_correct": 9817,
+  "weights": "raw",
+  "inference": "FP32 horizontal flip",
+  "checkpoint_sha256": "12a84327e589c1f705c7aa0fc9413c0293f841571b355014bccb7c850fda2513",
+  "submission_id": 58019390,
+  "public_accuracy": 0.913,
+  "submission_utc": "2026-11-05T10:18:26.997Z"
+}

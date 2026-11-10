@@ -55,6 +55,8 @@ def main():
         torch.backends.cuda.matmul.allow_tf32 = False
     device = torch.device(args.device)
     checkpoint = torch.load(args.checkpoint, map_location='cpu', weights_only=False)
+    if checkpoint['config'].get('cv_fold') is not None:
+        raise ValueError('Cross-validation uses frozen inference in cross_validation.py')
     if checkpoint.get('kind') == 'lejepa_backbone':
         raise ValueError('Fine-tune the self-supervised backbone before validation')
     if checkpoint['config']['full_data']:
@@ -63,7 +65,7 @@ def main():
     atomic_save(checkpoint, args.out / 'source.pt')
     model = build_model(checkpoint['config']['model']).to(device, memory_format=torch.channels_last)
     data = CIFAR10(ROOT/'data', train=True, transform=T.Compose([T.ToTensor(), T.Normalize(MEAN, STD)]))
-    train, val = split_indices(data.targets)
+    train, val = split_indices(data.targets, checkpoint['config'].get('audit_holdout', False))
     train_loader = DataLoader(Subset(data, train), batch_size=256, num_workers=2, pin_memory=True)
     val_loader = DataLoader(Subset(data, val), batch_size=500, num_workers=2, pin_memory=True)
     weights = [('model', checkpoint['model'])]

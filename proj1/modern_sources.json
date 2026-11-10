@@ -1,0 +1,20 @@
+{
+  "star": {
+    "repo": "ma-xu/Rewrite-the-Stars",
+    "commit": "c999eb50840a44f9f1d92e8f7d2c22cd645a6d5e",
+    "path": "imagenet/starnet.py",
+    "sha256": "4e9eb1f58ea51427eebe17baf9891a3e1d73d000597c032a700176c954c3031a"
+  },
+  "rld": {
+    "repo": "zju-SWJ/RLD",
+    "commit": "d54578fd77cd669d6209be4d05ae773bca4109b5",
+    "path": "mdistiller/distillers/RLD.py",
+    "sha256": "3eedaa557341202879d374f01a26d4f800505b347bedfca6e6fc80b710194dd3"
+  },
+  "ea": {
+    "repo": "cpsu00/EA-KD",
+    "commit": "6fb4c0657d0af422e446a508f86705455f4c4a4b",
+    "path": "mdistiller/distillers/KD.py",
+    "sha256": "13df25d08666aa885b20f4b3e819a7c4a3a92eb44824164d99abc3fa714f2a35"
+  }
+}

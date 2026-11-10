@@ -3,25 +3,47 @@
 [Kaggle competition](https://www.kaggle.com/competitions/cifar-10-res-net-architecture-challenge-dl)
 
 Residual CNNs trained from scratch on CIFAR-10, with a 5-million-parameter limit.
-Training uses 45,000 images and a fixed, stratified 5,000-image validation split.
-The selected configuration is then retrained on all 50,000 training images.
 
-The selected SE-ResNet-164 with AutoAugment and RICAP reaches 98.10% on the
-fixed validation split with 2,488,378 parameters. Both its held-out and full-data
-runs completed 1,800 epochs. Inference uses raw weights, FP32 and horizontal
-flips. Its full-data model and local CSV are
-`runs/se_ricap_20261031/winner_full_fp32.pt` and
-`runs/se_ricap_20261031/submission_fp32/submission.csv`.
-See [RESULTS.md](RESULTS.md) for the completed comparisons and audits.
+## Model selected for the report
 
-The two-teacher variant reaches 97.98% plain and 97.90% flip validation accuracy
-after 600 epochs. Full-data retraining has also completed 600 epochs. Export
-and CSV replay checks pass; its original export uses BF16, raw weights and no
-TTA. It remains under `runs/se_ricap_20261031_multiteacher_preparation/`.
+The selected **PyramidNet-110 (alpha 96)** has **4,804,512 parameters** and scored
+**0.913 public accuracy** in submission **58019390**. It trained on 40,000 images
+for 1,800 epochs. Its final raw weights reach **98.17% on the held-out 10,000-image
+fold 1**, using FP32 horizontal-flip inference. The separate 50k retrain scored
+0.912; it is not the selected checkpoint.
 
-FP32 inference reproduced 98.10% on both local GPUs, with identical validation
-predictions and final CSVs. The previous 97.92% recipe remains under
-`runs/final_batch_20261030/`.
+The executed [report_results.ipynb](report_results.ipynb) recomputes the parameter
+count and saved validation accuracy and prints the Kaggle public score from its
+receipt. Its evaluation source and inference settings are explicit in the output.
+
+The report is [REPORT.pdf](REPORT.pdf). Its results stop at submission 58045145.
+[Selected-model metadata](Figures/pyramid_result.json) identifies the exact
+checkpoint, evaluation settings, and Kaggle receipt.
+
+After the setup commands below, reproduce the selected training recipe from the
+repository root:
+
+```bash
+python proj1/train.py --name report_pyramid_reproduction --architecture pyramid \
+  --depth 110 --pyramid-alpha 96 --cv-fold 1 --cv-weights raw \
+  --epochs 1800 --batch-size 128 --eval-batch-size 500 \
+  --lr 0.1 --warmup-epochs 60 --min-lr 0.0001 --weight-decay 0.0001 \
+  --autoaugment --ricap 0.3 --random-erasing 0.5 --cutout 0 --compile-model
+
+python proj1/predict.py proj1/runs/report_pyramid_reproduction/final.pt \
+  --data proj1/data/competition --tta flip --precision fp32 \
+  --out proj1/runs/report_pyramid_reproduction/predictions/submission.csv
+```
+
+The saved submitted weights are `runs/opus_direct_20261104_pyramid_f1/final.pt`.
+Their SHA256 is
+`12a84327e589c1f705c7aa0fc9413c0293f841571b355014bccb7c850fda2513`.
+Training data and weights are local artifacts and are not bundled in Git.
+For the executed report notebook and plots, install `matplotlib` and `jupyter`
+with `python -m pip install matplotlib jupyter`. Regenerate the selected-model
+figure with `python proj1/plot_report.py`.
+
+## Earlier experiments and setup
 
 ## Setup
 
